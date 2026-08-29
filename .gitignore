@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data / models (uncomment if datasets get large)
+# data/
+# *.pth
+# *.h5
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
