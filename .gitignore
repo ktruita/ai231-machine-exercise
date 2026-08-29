@@ -18,3 +18,9 @@ env/
 .DS_Store
 .vscode/
 .idea/
+
+# MNIST and other downloaded datasets
+mp1/data/
+
+# notebooks from other courses
+AI221_machine_exercise_5.ipynb
