@@ -1,4 +1,4 @@
-# MP1 — 3-layer CNN on MNIST using einops and einsum
+# ME1 — 3-layer CNN on MNIST using einops and einsum
 
 Build a 3-layer CNN for MNIST classification with every layer and operation implemented
 using `einops`/`einsum`, train for 5 epochs, report the test split accuracy, and display
@@ -96,7 +96,7 @@ pip install -r requirements.txt
 jupyter lab mnist_einops_cnn.ipynb
 ```
 
-Run all cells. MNIST downloads to `mp1/data/` on first run (~64 MB, gitignored).
+Run all cells. MNIST downloads to `me1/data/` on first run (~64 MB, gitignored).
 Takes about 45 seconds end to end on an A100; it runs on CPU too, just slower.
 
 Measured on: Python 3.11, torch 2.10.0+cu128, einops 0.8.2, NVIDIA A100-SXM4-40GB.
