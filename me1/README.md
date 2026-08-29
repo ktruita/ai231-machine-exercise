@@ -1,4 +1,4 @@
-# ME1 — 3-layer CNN on MNIST using einops and einsum
+# ME1 - Einops/Einsum
 
 Build a 3-layer CNN for MNIST classification with every layer and operation implemented
 using `einops`/`einsum`, train for 5 epochs, report the test split accuracy, and display
