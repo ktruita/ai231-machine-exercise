@@ -8,30 +8,34 @@ Notebook: [`mnist_einops_cnn.ipynb`](mnist_einops_cnn.ipynb) (committed with out
 
 ## Result
 
-**Test split accuracy: 98.09%** — 9809 of 10000 test images, after 5 epochs.
+**Test split accuracy: 98.93%** — 9893 of 10000 test images, after 5 epochs.
 
 | Epoch | Train loss | Test accuracy |
 |-------|-----------|---------------|
-| 1 | 0.5839 | 95.85% |
-| 2 | 0.1429 | 96.70% |
-| 3 | 0.0992 | 97.38% |
-| 4 | 0.0769 | 97.82% |
-| 5 | 0.0598 | 98.09% |
+| 1 | 0.1611 | 98.60% |
+| 2 | 0.0382 | 98.43% |
+| 3 | 0.0238 | 98.90% |
+| 4 | 0.0167 | 99.04% |
+| 5 | 0.0131 | 98.93% |
 
-Accuracy was still rising at epoch 5, so the model is limited by the 5-epoch budget
-rather than by capacity.
+Test accuracy peaks at 99.04% on epoch 4 and settles at 98.93% while the train loss keeps
+falling, so by the end of the 5-epoch budget the model has started to overfit slightly.
+The reported figure is the accuracy after the required 5 epochs.
+
+Of the 16 sampled test images, 16 are classified correctly.
 
 ## Architecture
 
 ```
 Input                1 x 28 x 28
-Conv1  1  -> 32   3x3 pad 1  ReLU  MaxPool 2x2   ->  32 x 14 x 14
-Conv2  32 -> 64   3x3 pad 1  ReLU  MaxPool 2x2   ->  64 x 7 x 7
-Conv3  64 -> 128  3x3 pad 1  ReLU  GlobalAvgPool ->  128
-Linear 128 -> 10                                 ->  logits
+Conv1  1  -> 32   3x3 pad 1  ReLU  MaxPool 2x2  ->  32 x 14 x 14
+Conv2  32 -> 64   3x3 pad 1  ReLU  MaxPool 2x2  ->  64 x 7 x 7
+Conv3  64 -> 128  3x3 pad 1  ReLU               ->  128 x 7 x 7
+Flatten                                         ->  6272
+Linear 6272 -> 10                               ->  logits
 ```
 
-93,962 trainable parameters. Three convolution layers; the classifier head is not
+155,402 trainable parameters. Three convolution layers; the classifier head is not
 counted as a layer.
 
 ## What is implemented from scratch
@@ -40,11 +44,16 @@ counted as a layer.
 |---|---|
 | `conv2d` | `Tensor.unfold` sliding-window view → `rearrange` → `einsum('b p l, o p -> b o l')` |
 | `maxpool2d` | `reduce(x, 'b c (h p1) (w p2) -> b c h w', 'max')` |
-| global avg pool | `reduce(x, 'b c h w -> b c', 'mean')` |
 | `flatten` | `rearrange(x, 'b c h w -> b (c h w)')` |
+| global avg pool | `reduce(x, 'b c h w -> b c', 'mean')` |
 | `linear` | `einsum(x, W, 'b i, o i -> b o') + bias` |
 | `relu` | `x.clamp(min=0)` |
 | cross entropy | log-sum-exp form, `einsum` against a one-hot matrix |
+
+A convolution is a dot product between the kernel and every sliding window of the input,
+so it becomes a single contraction once the windows are laid out as a matrix. The
+`einsum` contracts over an axis of length `c * kh * kw`, which is exactly the per-window
+dot product, for all output positions and all kernels at once.
 
 No `nn.Conv2d`, `nn.Linear`, `nn.MaxPool2d`, `F.conv2d` or `F.unfold` is used in the
 model. `Tensor.unfold` is used rather than `F.unfold` because it is a generic strided
@@ -54,7 +63,14 @@ tensor padding, and the data loaders.
 
 Every operation is verified against its PyTorch reference in the notebook before
 training, in double precision. Worst-case difference: `1.07e-14` (convolution); the rest
-are exactly `0`.
+are exactly `0`. This matters because a subtly wrong convolution still trains and still
+reaches a plausible accuracy, so the assertion rather than the accuracy is what
+establishes correctness.
+
+Global average pooling is implemented and verified but not used by the final model. An
+earlier version used it in place of the flatten and reached 98.09%; collapsing each 7x7
+feature map to a single number discards where in the image a feature fired, which costs
+about a point on digits.
 
 ## Running it
 
