@@ -8,21 +8,38 @@ Notebook: [`mnist_einops_cnn.ipynb`](mnist_einops_cnn.ipynb) (committed with out
 
 ## Result
 
-**Test split accuracy: 98.93%** — 9893 of 10000 test images, after 5 epochs.
+**Test split accuracy: 99.09%** — 9909 of 10000 test images, after 5 epochs.
 
 | Epoch | Train loss | Test accuracy |
 |-------|-----------|---------------|
-| 1 | 0.1611 | 98.60% |
-| 2 | 0.0382 | 98.43% |
-| 3 | 0.0238 | 98.90% |
-| 4 | 0.0167 | 99.04% |
-| 5 | 0.0131 | 98.93% |
+| 1 | 0.1611 | 98.65% |
+| 2 | 0.0379 | 98.53% |
+| 3 | 0.0236 | 98.81% |
+| 4 | 0.0176 | 99.23% |
+| 5 | 0.0133 | 99.09% |
 
-Test accuracy peaks at 99.04% on epoch 4 and settles at 98.93% while the train loss keeps
+Test accuracy peaks at 99.23% on epoch 4 and settles at 99.09% while the train loss keeps
 falling, so by the end of the 5-epoch budget the model has started to overfit slightly.
 The reported figure is the accuracy after the required 5 epochs.
 
 Of the 16 sampled test images, 16 are classified correctly.
+
+## Preprocessing
+
+The normalization mean and standard deviation are **measured from the training split**
+rather than hardcoded:
+
+```python
+raw_train = datasets.MNIST(root='data', train=True, download=True).data.float() / 255
+data_mean = raw_train.mean().item()   # 0.1307
+data_std = raw_train.std().item()     # 0.3081
+```
+
+`.data` is the raw uint8 tensor before any transform, so dividing by 255 reproduces
+exactly what `ToTensor` produces. Only the training split is used, otherwise information
+from the test split would leak into the preprocessing. The mean is low because 80.9% of
+MNIST pixels are exactly zero background. The same two values are reused to undo the
+normalization when the sampled images are displayed.
 
 ## Architecture
 
