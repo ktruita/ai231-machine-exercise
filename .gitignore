@@ -24,3 +24,7 @@ me1/data/
 
 # notebooks from other courses
 AI221_machine_exercise_5.ipynb
+
+# ME1 supporting files kept local only
+me1/README.md
+me1/requirements.txt
