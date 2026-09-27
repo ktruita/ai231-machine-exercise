@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marvin Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #080c0d;
+    --panel: #111a1b;
+    --panel-2: #0d1415;
+    --line: #1d2b2c;
+    --text: #e2ecea;
+    --muted: #7d918e;
+    --accent: #f5a524;
+    --ok: #46d39a;
+    --warn: #f5a524;
+    --bad: #f0616d;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 16px 16px;
+  }
+
+  /* ---- status strip ---------------------------------------------------- */
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 14px 0 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .brand .sub {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  .spec {
+    display: flex;
+    gap: 14px;
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+
+  .spec b { color: var(--text); font-weight: 500; }
+
+  .state {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex: none;
+  }
+
+  .state[data-mode="armed"] { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, var(--line)); }
+  .state[data-mode="armed"] .dot { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .state[data-mode="listening"] .dot { background: var(--ok); }
+  .state[data-mode="offline"] { color: var(--bad); }
+  .state[data-mode="offline"] .dot { background: var(--bad); }
+
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  /* ---- example commands ------------------------------------------------ */
+
+  .tryline {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .try-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .try-cmd {
+    font-family: var(--mono);
+    font-size: 17px;
+    color: var(--accent);
+    transition: opacity 0.35s ease;
+  }
+
+  .try-cmd.fading { opacity: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
+  /* level meter: 24 segments, lit proportionally to RMS */
+  .meter { display: flex; gap: 2px; align-items: flex-end; height: 18px; }
+  .meter i {
+    width: 3px;
+    height: 100%;
+    background: var(--line);
+    border-radius: 1px;
+    transition: background 60ms linear;
+  }
+  .meter i.on { background: var(--ok); }
+  .meter i.hot { background: var(--accent); }
+
+  /* ---- body grid ------------------------------------------------------- */
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 16px;
+    padding-top: 16px;
+    min-height: 0;
+  }
+
+  @media (max-width: 820px) {
+    main { grid-template-columns: 1fr; }
+    .readout { order: -1; }
+  }
+
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    padding: 28px 20px;
+    min-height: 340px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .heard {
+    position: absolute;
+    top: 14px; left: 18px; right: 18px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---- widgets --------------------------------------------------------- */
+
+  .widget { display: none; text-align: center; width: 100%; }
+  .widget.show { display: block; }
+
+  .idle-mark {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 2;
+  }
+  .idle-mark b { color: var(--text); font-weight: 500; }
+
+  /* timer */
+  .ring { display: block; margin: 0 auto 6px; }
+  .ring circle { fill: none; stroke-width: 7; }
+  .ring .track { stroke: var(--line); }
+  .ring .run {
+    stroke: var(--accent);
+    stroke-linecap: round;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+    transition: stroke-dashoffset 0.35s linear;
+  }
+  .clockface {
+    font-family: var(--mono);
+    font-size: 54px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .caption {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .clockface.done { color: var(--accent); }
+
+  /* lights */
+  .room {
+    display: flex;
+    gap: 18px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .lamp {
+    width: 92px;
+    padding: 14px 8px 11px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel-2);
+    transition: border-color 0.25s, background 0.25s;
+  }
+  .lamp .bulb {
+    width: 34px; height: 34px;
+    margin: 0 auto 9px;
+    border-radius: 50%;
+    background: #1b2526;
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .lamp .name {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .lamp.lit { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); }
+  .lamp.lit .name { color: var(--text); }
+  .lamp.target { box-shadow: 0 0 0 1px var(--accent); }
+
+  /* media */
+  .transport { display: flex; gap: 10px; justify-content: center; margin-bottom: 14px; }
+  .key {
+    width: 62px; height: 52px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--muted);
+    transition: all 0.2s;
+  }
+  .key svg { width: 20px; height: 20px; fill: currentColor; }
+  .key.active {
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* info cards */
+  .bigclock {
+    font-family: var(--mono);
+    font-size: 58px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .wx { display: flex; align-items: center; justify-content: center; gap: 20px; }
+  .wx .temp {
+    font-family: var(--mono);
+    font-size: 52px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .wx .cond { text-align: left; font-size: 14px; color: var(--muted); line-height: 1.6; }
+  .demo-tag {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 3px 9px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* rejected */
+  .reject .mark { font-size: 40px; font-weight: 600; color: var(--muted); }
+  .reject .why { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+  /* ---- readout --------------------------------------------------------- */
+
+  .readout {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+  }
+
+  .readout h2 {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .slots { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .slots div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 11px;
+    background: var(--panel-2);
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  .slots dt { color: var(--muted); }
+  .slots dd { margin: 0; color: var(--text); text-align: right; word-break: break-word; }
+  .slots dd.null { color: #4d5f5d; }
+
+  .conf-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .conf-head {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .conf-head b { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .bar { height: 5px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--ok); transition: width 0.3s, background 0.3s; }
+
+  .perf { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .perf div { background: var(--panel-2); padding: 9px 11px; }
+  .perf .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .perf .v { font-family: var(--mono); font-size: 18px; font-variant-numeric: tabular-nums; margin-top: 1px; }
+
+  .log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; min-height: 60px; }
+  .log p {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+  }
+  .log p b { color: var(--text); font-weight: 400; }
+  .log p .t { color: #4d5f5d; flex: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="brand">
+      <h1>Marvin</h1>
+      <span class="sub">on-device voice commands</span>
+    </div>
+    <div class="state" id="state" data-mode="offline">
+      <span class="dot"></span><span id="state-label">waiting for device</span>
+    </div>
+    <div class="meter" id="meter"></div>
+    <div class="spec">
+      <span><b id="spec-params">685k</b> params</span>
+      <span><b id="spec-size">2.7 MB</b></span>
+      <span><b>no network</b></span>
+    </div>
+  </header>
+
+  <div class="tryline" aria-live="polite">
+    <span class="try-label">say &ldquo;Marvin&rdquo;, then try</span>
+    <span class="try-cmd" id="try-cmd">&ldquo;set a timer for fifteen minutes&rdquo;</span>
+  </div>
+
+  <main>
+    <section class="stage">
+      <div class="heard" id="heard"></div>
+
+      <div class="widget show" id="w-idle">
+        <p class="idle-mark">
+          say <b>&ldquo;Marvin&rdquo;</b>, then a command<br>
+          &ldquo;set a timer for fifteen minutes&rdquo;<br>
+          &ldquo;turn off the kitchen lights&rdquo;
+        </p>
+      </div>
+
+      <div class="widget" id="w-timer">
+        <svg class="ring" width="168" height="168" viewBox="0 0 168 168" aria-hidden="true">
+          <circle class="track" cx="84" cy="84" r="76"></circle>
+          <circle class="run" id="ring-run" cx="84" cy="84" r="76"
+                  stroke-dasharray="477.5" stroke-dashoffset="0"></circle>
+        </svg>
+        <div class="clockface" id="timer-face">00:00</div>
+        <div class="caption" id="timer-cap">timer</div>
+      </div>
+
+      <div class="widget" id="w-lights">
+        <div class="room" id="room"></div>
+        <div class="caption" id="lights-cap">lights</div>
+      </div>
+
+      <div class="widget" id="w-media">
+        <div class="transport" id="transport"></div>
+        <div class="caption" id="media-cap">playback</div>
+      </div>
+
+      <div class="widget" id="w-time">
+        <div class="bigclock" id="bigclock">--:--</div>
+        <div class="caption">local time</div>
+      </div>
+
+      <div class="widget" id="w-weather">
+        <div class="wx">
+          <div class="temp">28&deg;</div>
+          <div class="cond">Partly cloudy<br>Humidity 74%<br>Wind 11 km/h</div>
+        </div>
+        <span class="demo-tag">demo data &middot; model classifies intent only</span>
+      </div>
+
+      <div class="widget reject" id="w-reject">
+        <div class="mark">&mdash;</div>
+        <div class="why" id="reject-why">didn&rsquo;t catch that</div>
+      </div>
+    </section>
+
+    <aside class="readout">
+      <h2>Decode</h2>
+      <div class="slots" id="slots">
+        <div><dt>intent</dt><dd class="null">idle</dd></div>
+      </div>
+
+      <div class="conf-wrap">
+        <div class="conf-head"><span>confidence</span><b id="conf-val">&ndash;</b></div>
+        <div class="bar"><span id="conf-bar"></span></div>
+      </div>
+
+      <div class="perf">
+        <div><div class="k">latency</div><div class="v" id="perf-ms">&ndash;</div></div>
+        <div><div class="k">real-time factor</div><div class="v" id="perf-rtf">&ndash;</div></div>
+      </div>
+
+      <h2>History</h2>
+      <div class="log" id="log"></div>
+    </aside>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SEGMENTS = 24;
+
+  // Phrasings the model handles well. Kept away from the known failures:
+  // "fifty" (confused with fifty-five), a bare "turn on lights", "washroom".
+  // Edit freely - testers tend to copy what they see.
+  var EXAMPLES = [
+    "turn off the kitchen lights",
+    "set a timer for thirty minutes",
+    "volume up",
+    "what time is it",
+    "turn on the bedroom lights",
+    "pause the music",
+    "dim the living room lights to seventy percent",
+    "set a timer for ten minutes",
+    "what's the weather like today",
+    "turn the volume down",
+    "play some music",
+    "set a timer for twenty minutes",
+    "stop the music"
+  ];
+  var ROTATE_MS = 4000;
+  var ROOMS = ["living room", "kitchen", "bedroom", "bathroom", "office", "garage"];
+  var ACTIONS = [
+    ["play",        "M8 5v14l11-7z"],
+    ["pause",       "M6 5h4v14H6zm8 0h4v14h-4z"],
+    ["stop",        "M6 6h12v12H6z"],
+    ["next",        "M6 5l9 7-9 7zm11 0h2v14h-2z"],
+    ["volume_up",   "M4 9v6h4l5 5V4L8 9zm12.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4zM14 2v2a8 8 0 010 16v2a10 10 0 000-20z"],
+    ["volume_down", "M4 9v6h4l5 5V4L8 9zm12.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4z"]
+  ];
+
+  var el = function (id) { return document.getElementById(id); };
+  var meter = el("meter"), log = el("log");
+  var timerHandle = null, clockHandle = null;
+
+  // ---- static scaffolding -------------------------------------------------
+
+  for (var i = 0; i < SEGMENTS; i++) meter.appendChild(document.createElement("i"));
+
+  ROOMS.forEach(function (name) {
+    var d = document.createElement("div");
+    d.className = "lamp";
+    d.dataset.room = name;
+    d.innerHTML = '<div class="bulb"></div><div class="name">' + name + "</div>";
+    el("room").appendChild(d);
+  });
+
+  ACTIONS.forEach(function (a) {
+    var d = document.createElement("div");
+    d.className = "key";
+    d.dataset.action = a[0];
+    d.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + a[1] + '"></path></svg>';
+    el("transport").appendChild(d);
+  });
+
+  // ---- small helpers ------------------------------------------------------
+
+  function show(id) {
+    var all = document.querySelectorAll(".widget");
+    for (var i = 0; i < all.length; i++) all[i].classList.toggle("show", all[i].id === id);
+  }
+
+  function setState(mode, label) {
+    el("state").dataset.mode = mode;
+    el("state-label").textContent = label;
+  }
+
+  function stamp() {
+    var d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + ":" +
+           String(d.getSeconds()).padStart(2, "0");
+  }
+
+  function mmss(total) {
+    var m = Math.floor(Math.max(total, 0) / 60), s = Math.max(total, 0) % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  function describe(cmd) {
+    var parts = [];
+    for (var k in cmd) {
+      if (k !== "intent" && cmd[k] !== null && cmd[k] !== undefined) parts.push(k + "=" + cmd[k]);
+    }
+    return cmd.intent + (parts.length ? "  " + parts.join("  ") : "");
+  }
+
+  // ---- panels -------------------------------------------------------------
+
+  function renderSlots(cmd, rejected) {
+    var box = el("slots");
+    box.innerHTML = "";
+    var rows = [["intent", rejected ? "rejected" : cmd.intent]];
+    for (var k in cmd) if (k !== "intent") rows.push([k, cmd[k]]);
+
+    rows.forEach(function (r) {
+      var v = (r[1] === null || r[1] === undefined) ? "—" : String(r[1]);
+      var row = document.createElement("div");
+      row.innerHTML = "<dt>" + r[0] + "</dt><dd" +
+        ((r[1] === null || r[1] === undefined) ? ' class="null"' : "") + ">" + v + "</dd>";
+      box.appendChild(row);
+    });
+  }
+
+  function renderConfidence(p, rejected) {
+    el("conf-val").textContent = (p * 100).toFixed(1) + "%";
+    var bar = el("conf-bar");
+    bar.style.width = Math.max(p * 100, 2) + "%";
+    bar.style.background = rejected ? "var(--bad)" : (p >= 0.85 ? "var(--ok)" : "var(--warn)");
+  }
+
+  function startTimer(seconds, label) {
+    if (timerHandle) clearInterval(timerHandle);
+    var total = seconds, left = seconds, ring = el("ring-run"), CIRC = 477.5;
+
+    function tick() {
+      el("timer-face").textContent = mmss(left);
+      ring.style.strokeDashoffset = CIRC * (1 - (total ? left / total : 0));
+      if (left <= 0) {
+        clearInterval(timerHandle);
+        timerHandle = null;
+        el("timer-face").classList.add("done");
+        el("timer-cap").textContent = "time’s up";
+        return;
+      }
+      left--;
+    }
+
+    el("timer-face").classList.remove("done");
+    el("timer-cap").textContent = label;
+    tick();
+    timerHandle = setInterval(tick, 1000);
+  }
+
+  function renderLights(cmd) {
+    var lamps = document.querySelectorAll(".lamp");
+    for (var i = 0; i < lamps.length; i++) {
+      var lamp = lamps[i], isTarget = (lamp.dataset.room === cmd.room);
+      lamp.classList.toggle("target", isTarget);
+      if (!isTarget && cmd.room) continue;
+
+      var on = cmd.intent === "light.dim" ? true : cmd.state === "on";
+      var pct = cmd.intent === "light.dim" && cmd.percent ? cmd.percent : (on ? 100 : 0);
+      lamp.classList.toggle("lit", on);
+      var bulb = lamp.querySelector(".bulb");
+      if (on) {
+        var a = 0.25 + 0.75 * (pct / 100);
+        bulb.style.background = "rgba(245,165,36," + a.toFixed(2) + ")";
+        bulb.style.boxShadow = "0 0 " + Math.round(8 + pct * 0.28) + "px rgba(245,165,36,0.55)";
+      } else {
+        bulb.style.background = "#1b2526";
+        bulb.style.boxShadow = "none";
+      }
+    }
+    el("lights-cap").textContent = (cmd.room || "all lights") +
+      (cmd.intent === "light.dim" && cmd.percent ? " · " + cmd.percent + "%" : " · " + (cmd.state || ""));
+  }
+
+  function renderMedia(cmd) {
+    var keys = document.querySelectorAll(".key");
+    for (var i = 0; i < keys.length; i++) keys[i].classList.toggle("active", keys[i].dataset.action === cmd.action);
+    el("media-cap").textContent = cmd.action ? String(cmd.action).replace("_", " ") : "playback";
+  }
+
+  function runClock() {
+    if (clockHandle) clearInterval(clockHandle);
+    function tick() {
+      var d = new Date();
+      el("bigclock").textContent = String(d.getHours()).padStart(2, "0") + ":" +
+                                   String(d.getMinutes()).padStart(2, "0");
+    }
+    tick();
+    clockHandle = setInterval(tick, 1000);
+  }
+
+  // ---- event handling -----------------------------------------------------
+
+  function onResult(ev) {
+    var cmd = ev.command || {}, rejected = ev.rejected || cmd.intent === "none";
+
+    el("heard").textContent = rejected ? "" : describe(cmd);
+    renderSlots(cmd, rejected);
+    renderConfidence(ev.confidence || 0, rejected);
+    el("perf-ms").textContent = ev.latency_ms != null ? ev.latency_ms.toFixed(1) + " ms" : "–";
+    el("perf-rtf").textContent = ev.rtf != null ? ev.rtf.toFixed(4) : "–";
+
+    var line = document.createElement("p");
+    line.innerHTML = '<span class="t">' + stamp() + "</span><b>" +
+      (rejected ? "rejected" : describe(cmd)) + "</b>";
+    log.insertBefore(line, log.firstChild);
+    while (log.children.length > 40) log.removeChild(log.lastChild);
+
+    if (rejected) {
+      el("reject-why").textContent = ev.reason || "didn’t catch that";
+      show("w-reject");
+      return;
+    }
+
+    if (cmd.intent === "timer.set") {
+      var n = cmd.number || 0, unit = cmd.unit || "minutes";
+      var mult = unit === "hours" ? 3600 : unit === "seconds" ? 1 : 60;
+      startTimer(n * mult, n + " " + unit);
+      show("w-timer");
+    } else if (cmd.intent === "light.set" || cmd.intent === "light.dim") {
+      renderLights(cmd);
+      show("w-lights");
+    } else if (cmd.intent === "media.control") {
+      renderMedia(cmd);
+      show("w-media");
+    } else if (cmd.intent === "query.info") {
+      if (cmd.kind === "weather") { show("w-weather"); }
+      else { runClock(); show("w-time"); }
+    } else {
+      show("w-idle");
+    }
+  }
+
+  function onLevel(ev) {
+    var lit = Math.min(Math.round((ev.rms || 0) / 0.18 * SEGMENTS), SEGMENTS);
+    var bars = meter.children;
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].className = i < lit ? (i > SEGMENTS * 0.8 ? "hot" : "on") : "";
+    }
+    if (ev.armed) setState("armed", "speak now");
+    else setState("listening", "listening for “marvin”");
+  }
+
+  var source = new EventSource("/events");
+
+  source.onopen = function () { setState("listening", "listening for “marvin”"); };
+
+  // ---- rotating example commands ------------------------------------------
+
+  (function () {
+    var target = el("try-cmd"), next = 1;
+    var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function showExample(i) { target.textContent = "\u201c" + EXAMPLES[i] + "\u201d"; }
+
+    showExample(0);
+    setInterval(function () {
+      var i = next;
+      next = (next + 1) % EXAMPLES.length;
+      if (still) { showExample(i); return; }
+      target.classList.add("fading");
+      setTimeout(function () { showExample(i); target.classList.remove("fading"); }, 350);
+    }, ROTATE_MS);
+  })();
+
+  source.onerror = function () { setState("offline", "device disconnected"); };
+
+  source.onmessage = function (e) {
+    var ev;
+    try { ev = JSON.parse(e.data); } catch (err) { return; }
+
+    if (ev.type === "level") onLevel(ev);
+    else if (ev.type === "result") onResult(ev);
+    else if (ev.type === "wake") setState("armed", "speak now");
+    else if (ev.type === "hello") {
+      if (ev.params) el("spec-params").textContent = ev.params;
+      if (ev.size) el("spec-size").textContent = ev.size;
+    }
+  };
+})();
+</script>
+</body>
+</html>

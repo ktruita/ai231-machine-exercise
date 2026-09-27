@@ -1,0 +1,12 @@
+{
+ "run": "wakeword_marvin",
+ "kind": "wakeword",
+ "sample_rate": 16000,
+ "n_fft": 400,
+ "hop_length": 160,
+ "num_mels": 40,
+ "window_s": 1.0,
+ "head_names": [
+  "logits"
+ ]
+}
