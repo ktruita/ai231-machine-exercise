@@ -204,6 +204,11 @@ def main(config: DictConfig) -> None:
     # Load or resume config
     config, ckpt_path = load_or_resume_config(config)
 
+    # Seed before anything random is built. Seeded after the model, as it once
+    # was, the initial weights came from an unseeded generator, and two runs
+    # with the same seed started from different weights
+    L.seed_everything(config.seed)
+
     # Setup logging
     logger = setup_logger(config)
 
@@ -231,7 +236,6 @@ def main(config: DictConfig) -> None:
 
     # Configure trainer
     torch.set_float32_matmul_precision("medium")
-    L.seed_everything(config.seed)
 
     trainer = L.Trainer(
         accelerator="gpu",

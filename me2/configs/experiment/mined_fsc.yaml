@@ -81,6 +81,8 @@ dataloader:
 
 # The demo averages two runs of this config: this one, and a second trained
 # with `python main.py experiment=mined_fsc seed=232 name=vcm_mined_fsc_s2`.
+# Both were trained before main.py seeded the initial weights, so a rerun
+# gives a comparable model rather than the same weights.
 name: vcm_mined_fsc
 exp_dir: modelstore/${name}
 max_steps: 16000
