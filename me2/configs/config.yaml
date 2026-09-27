@@ -1,0 +1,30 @@
+defaults:
+  - cluster: local
+  - dataloader: vcm
+  - module: vcm
+  - _self_
+  - experiment: null
+  - override hydra/job_logging: none
+  - override hydra/hydra_logging: none
+
+
+log: True
+entity:
+project: ${module.project}
+name: vcm_masked_loss
+
+exp_dir: modelstore/${name}
+resume: True
+
+seed: 231
+max_steps: 8000
+batch_size: ${cluster.batch_size}
+
+save_step_frequency: 2000
+log_freq: 50
+limit_val_batches: null
+accumulate_grad_batches: 1
+debug: False
+
+mode: train
+fresh_dataloader: false

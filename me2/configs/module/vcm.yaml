@@ -1,0 +1,34 @@
+project: voice-command-model
+spec_path: commands.yaml
+
+module:
+  _target_: lightning_module.vcm_trainer.VoiceCommandModule
+  name: ${name}
+  lr: 3e-4
+  betas: [0.9, 0.98]
+  weight_decay: 0.05
+  num_warmup_steps: 500
+  num_training_steps: ${max_steps}
+  num_cycles: 0.5
+  masked_loss: True
+  label_smoothing: 0.0
+
+features:
+  _target_: vcm.features.LogMelSpectrogram
+  sample_rate: 16000
+  n_fft: 400
+  hop_length: 160
+  num_mels: 40
+  f_min: 20.0
+  f_max: null
+
+backbone:
+  _target_: vcm.vcm_model.VoiceCommandModel
+  num_mels: ${module.features.num_mels}
+  dims: [64, 64, 96, 128]
+  kernel_sizes: [13, 15, 17]
+  dilations: [1, 2, 4]
+  strides: [1, 2, 2]
+
+# Null by default so the earlier runs stay reproducible; enabled per experiment
+spec_augment: null

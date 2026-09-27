@@ -1,0 +1,30 @@
+project: voice-command-model
+spec_path: commands.yaml        # unused here, kept so the shared config resolves
+
+module:
+  _target_: lightning_module.wakeword_trainer.WakeWordModule
+  name: ${name}
+  lr: 3e-4
+  betas: [0.9, 0.98]
+  weight_decay: 0.01
+  num_warmup_steps: 300
+  num_training_steps: ${max_steps}
+  num_cycles: 0.5
+  label_smoothing: 0.0
+
+features:
+  _target_: vcm.features.LogMelSpectrogram
+  sample_rate: 16000
+  n_fft: 400
+  hop_length: 160
+  num_mels: 40
+  f_min: 20.0
+  f_max: null
+
+backbone:
+  _target_: vcm.wakeword.WakeWordModel
+  num_mels: ${module.features.num_mels}
+  dims: [32, 32, 48, 64]
+  kernel_sizes: [9, 11, 13]
+  dilations: [1, 2, 4]
+  strides: [1, 2, 2]

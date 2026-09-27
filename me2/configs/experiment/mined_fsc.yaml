@@ -1,0 +1,87 @@
+# @package _global_
+# vcm_fixweight plus real spoken number words mined from LibriSpeech.
+#
+# The number head was the only head trained on nothing but Piper. Across every
+# real source in the dataset the model had heard a human say "fifteen" three
+# times and "sixteen" once, which is why it scores 0.968 exact on synthetic
+# audio and confuses fifteen with fifty on a microphone.
+#
+# The mined rows are `none` utterances - read prose, not commands - carrying
+# supervise: ["number"], so the masked loss grades the number heads on them
+# while the intent head learns to reject them.
+#
+# vcm_libnum showed the number head works - held-out real-speech number
+# accuracy went from 0.069 to 0.682 - while real commands got worse, because
+# 3,242 mined `none` rows against 146 real timer commands is 22:1, and the
+# intent head learned that a number in a human voice means reject.
+#
+# The mined rows now carry supervise_intent: false, so they train the number
+# heads and are excluded from the intent loss entirely. Rejection is still
+# taught by the other 20,000 negatives.
+#
+# libnum2 fixed the intent head but not the prosody gap: the number head reads
+# numbers in read prose at 0.705 and still misses them in a spoken command.
+# The mined audiobooks teach the words; only real commands teach the stress
+# pattern, and there are 146 of those. Repeating them is the last lever that
+# does not need more people recorded.
+#
+# Scoped to the intent, not the source - Timers and Such is 146 commands
+# against 1,095 negatives, and repeating the source would multiply both.
+#
+# Everything above added real audio in the wrong context - read prose, isolated
+# words, repetition - and all of it came back inside the seed noise floor
+# (real exact spread 0.009 across three seeds of one config).
+#
+# STOP is real people issuing task-oriented commands. Its timer domain lifts
+# real command-prosody timer utterances from 146 to 2,486, and real speech from
+# 40.2% to 55.1% of the training split. This is the first intervention that
+# supplies the distribution the deployed model actually meets.
+#
+# Caveat carried into the results: STOP covers the numbers people really use.
+# 10, 15, 20, 30 and 45 are well represented; 13, 14, 16 and 19 sit under 20
+# utterances each and stay unfixed.
+#
+# Template mining. Half of every label's hand-written-template audio is
+# replaced by Piper renderings of phrasings mined from SLURP and STOP train
+# transcripts: 8,752 utterances drawn from 23,190 real phrasings, with the
+# entities people actually say - places, artists, stations, timer purposes.
+#
+# The largest real-speech error cells were query.info -> none (263) and
+# media.control -> none (233), and their transcripts share open-vocabulary
+# content the templates never contained. The swap is per label, so every
+# class and slot-value count is unchanged and phrasing is the only variable.
+# Phrasings matching any test transcript were excluded.
+#
+# Plus Fluent Speech Commands, capped. At full size (22% of training) FSC took
+# its 10 unseen test speakers to 0.953 but pulled every other corpus down 3-5
+# points: 87 speakers saying only 248 phrasings teaches those phrasings, not
+# how other people phrase the same commands. Here it is sampled to 4,999 rows,
+# 7.8% of training, keeping all 77 FSC train speakers - the speaker variety
+# was its real contribution - while cutting how often each phrasing repeats.
+#
+# The aim is vcm_mined's phrasing generality with vcm_fsc's speaker
+# robustness and hard-negative rejection.
+#
+# Held at 16,000 steps and without SpecAugment so the only difference from
+# vcm_fixweight is the data, and the delta is attributable to it.
+module:
+  module:
+    masked_loss: True
+    class_weight_power: 0.5
+  backbone:
+    dims: [160, 160, 256, 320]
+
+dataloader:
+  dataset:
+    exclude_negative_models: []
+    repeat_sources: {slurp: 3, "timers_and_such:timer.set": 8}
+  augment:
+    response_probability: 0.6
+    codec_probability: 0.15
+
+# The demo averages two runs of this config: this one, and a second trained
+# with `python main.py experiment=mined_fsc seed=232 name=vcm_mined_fsc_s2`.
+name: vcm_mined_fsc
+exp_dir: modelstore/${name}
+max_steps: 16000
+save_step_frequency: 4000

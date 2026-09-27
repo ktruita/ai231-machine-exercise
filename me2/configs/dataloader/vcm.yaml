@@ -1,0 +1,35 @@
+dataset:
+  _target_: dataloaders.vcm_dataloader.VoiceCommandDataset
+  data_dir: data/dataset
+  spec_path: ${module.spec_path}
+  split: train
+  random_offset: True
+  augment: ${dataloader.augment}
+
+
+# Applied to every class alike. Augmenting only the commands would give the
+# model a channel cue that separates them from the reject class.
+augment:
+  _target_: dataloaders.augment.AudioAugment
+  musan_dir: data/augment/musan
+  rir_dir: data/augment/RIRS_NOISES
+  split: train                      # simulated impulse responses; real ones are held out
+  snr_db: [20.0, 15.0, 10.0, 5.0, 0.0]
+  gain_db: [-15.0, 2.0]
+  reverb_probability: 0.5
+  noise_probability: 0.8
+  seed: ${seed}
+
+
+# Validation stays clean so model selection is not chasing a moving target and
+# the number stays comparable with the un-augmented runs. Robustness is measured
+# separately by the SNR sweep in benchmark.yaml.
+validation_args:
+  split: val
+  random_offset: False
+  augment: null
+
+test_args:
+  split: test
+  random_offset: False
+  augment: null

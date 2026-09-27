@@ -1,0 +1,33 @@
+dataset:
+  _target_: dataloaders.wakeword_dataloader.WakeWordDataset
+  root: data/real_speech/speech_commands
+  wake_word: marvin
+  split: train
+  negative_ratio: 3.0
+  duration_s: 1.0
+  sample_rate: 16000
+  augment: ${dataloader.augment}
+  seed: ${seed}
+
+
+# An always-on detector lives in the room, not in a studio. Augmentation matters
+# more here than for the command model, which only ever runs after a trigger.
+augment:
+  _target_: dataloaders.augment.AudioAugment
+  musan_dir: data/augment/musan
+  rir_dir: data/augment/RIRS_NOISES
+  split: train
+  snr_db: [20.0, 15.0, 10.0, 5.0, 0.0]
+  gain_db: [-15.0, 2.0]
+  reverb_probability: 0.5
+  noise_probability: 0.8
+  seed: ${seed}
+
+
+validation_args:
+  split: val
+  augment: null
+
+test_args:
+  split: test
+  augment: null

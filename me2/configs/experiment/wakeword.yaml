@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - override /module: wakeword
+  - override /dataloader: wakeword
+
+name: wakeword_marvin
+exp_dir: modelstore/${name}
+max_steps: 4000
+save_step_frequency: 1000

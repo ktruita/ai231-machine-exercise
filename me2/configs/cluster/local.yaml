@@ -1,0 +1,4 @@
+precision: 32-true
+batch_size: 128
+gpus: 1
+cpus: 8
