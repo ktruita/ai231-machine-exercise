@@ -1,0 +1,196 @@
+# AI 231 ME2 - Voice Command Model benchmark specification
+#
+# Companion to commands.yaml. That file defines WHAT the model predicts; this
+# one defines HOW it is scored. Both are meant to be agreed across the class -
+# models trained to the same commands.yaml but scored differently are not
+# comparable, which defeats the point of a shared benchmark.
+#
+# Read by: the evaluation script and the report generator.
+
+version: 1
+command_spec: commands.yaml    # label space, splits and eval sets are defined there
+
+# ---------------------------------------------------------------------------
+# Headline - the three numbers that go on the first slide. One for capability,
+# one for restraint, one for footprint. A model is not described by any one of
+# them alone.
+# ---------------------------------------------------------------------------
+headline:
+  capability:
+    metric: exact_command_accuracy
+    eval_set: test_human
+  restraint:
+    metric: false_accepts_per_hour
+    eval_set: test_negatives
+    at: operating_point
+  footprint:
+    metrics: [int8_size_kb, latency_p95_ms]
+    device: rpi
+
+# ---------------------------------------------------------------------------
+# Metric definitions. Written out because the definitions are exactly what a
+# shared benchmark has to pin down.
+# ---------------------------------------------------------------------------
+metrics:
+
+  exact_command_accuracy:
+    definition: >
+      Fraction of utterances where the predicted intent is correct AND every
+      slot that intent uses is correct. The headline capability number.
+    note: >
+      Using the target mask rather than the predicted one is exact, not an
+      approximation: if the intent is wrong the utterance has already failed,
+      and if it is right the two masks are identical by construction.
+    why_not_per_head: >
+      Errors compound. Three heads at 95% give 0.95^3 = 86% of commands
+      actually working, so a per-head average overstates by nine points.
+
+  intent_accuracy:
+    definition: Fraction of utterances with the correct intent, the 6-way decision alone.
+    role: diagnostic    # never reported as the headline
+
+  slot_accuracy:
+    definition: >
+      Per slot, accuracy over ONLY the utterances whose intent uses that slot.
+    note: >
+      The restriction is the whole point. A slot is N/A on roughly 80% of
+      utterances, so scoring over all of them lets a head look accurate while
+      never predicting a value. This is the metric that makes the
+      masked-vs-naive loss comparison legible.
+
+  false_accept_rate:
+    definition: Fraction of `none` utterances assigned to any command intent.
+
+  false_accepts_per_hour:
+    definition: false_accept_rate scaled by the audio duration of the negatives set.
+    why: >
+      "2 per hour" is something a person can reason about when the device sits
+      in their kitchen. "3% FAR" is not.
+
+  false_reject_rate:
+    definition: Fraction of genuine commands assigned to `none`.
+
+  detection_error_tradeoff:
+    definition: >
+      false_reject_rate plotted against false_accepts_per_hour as the confidence
+      threshold is swept. A single rejection number is meaningless without it.
+
+  risk_coverage:
+    definition: >
+      Exact command accuracy over the utterances the model does not abstain on,
+      as a function of the abstention rate.
+    why: >
+      For a device, declining to act beats acting wrongly. This says what
+      accuracy is bought by answering "sorry, didn't catch that".
+
+# Deliberately not used - see the write-up.
+#   slot_f1: ATIS/SNIPS score slot filling as span labelling over tokens, where
+#   spurious and missing slots make precision and recall diverge. Here the
+#   intent fixes the slot arity, so F1 collapses toward accuracy and adds
+#   nothing but the appearance of rigour.
+
+# ---------------------------------------------------------------------------
+# Protocol
+# ---------------------------------------------------------------------------
+protocol:
+
+  # Rejection is a threshold decision, so a model is not one point but a curve.
+  # Fixing the target makes everyone's capability numbers comparable.
+  operating_point:
+    rule: highest confidence threshold whose false_accepts_per_hour <= target
+    target_fa_per_hour: 1.0
+    confidence: max softmax probability of the intent head
+    note: report the chosen threshold alongside the score, it is part of the result
+
+  # The same headline metric under degradation. This curve, not the clean
+  # number, is what predicts whether the demo survives a room with people in it.
+  conditions:
+    clean: {}
+    noisy:
+      snr_db: [20, 15, 10, 5, 0]
+      noise_source: musan            # held out from the training noise pool
+    far_field:
+      rir_source: openslr28          # held out from the training RIR pool
+
+  # The same headline metric sliced. Each slice answers a different question.
+  slices:
+    by_intent: does one intent drag the average down
+    by_speaker_group: native vs L2 - noisy at 5 held-out l2arctic speakers, still directional
+    by_snr: the robustness curve
+    synth_vs_real: >
+      test_synth minus test_human is the synthetic-to-real domain gap. Report it
+      explicitly. It is the cost of the TTS training strategy and a legitimate
+      finding, not something to bury.
+
+  # The test set is balanced at 1000 per intent, which makes the headline a
+  # macro average - the right choice for measuring capability. Deployment is
+  # nowhere near balanced, so also report a weighted number using the frequency
+  # data in the ME2 brief (lights are 85% of IoT commands, music is #1 overall).
+  weighting:
+    macro: true
+    deployment_weighted: true
+
+  # Diagnostics worth running even though they are not scores.
+  diagnostics:
+    intent_confusion_matrix: true
+    number_confusion_matrix: >
+      Look specifically at teens against tens - fifteen/fifty, thirteen/thirty.
+      The distinguishing cue is stress and a weak /n/, so it is where a flat
+      61-class number head should fail first. Errors clustering there are the
+      evidence for switching to digit decomposition.
+
+# ---------------------------------------------------------------------------
+# Efficiency. The brief demands "tiny" and "real-time", so these are results,
+# not footnotes. Measurement conditions are specified because latency numbers
+# without them are not comparable.
+# ---------------------------------------------------------------------------
+efficiency:
+
+  static:
+    - parameters
+    - fp32_size_kb
+    - int8_size_kb
+    - macs_per_utterance
+    - peak_activation_kb
+
+  runtime:
+    device: [rpi4, rpi5]
+    runtime: onnxruntime
+    quantisation: int8
+    threads: 1                  # measured: extra threads do not help a model this small
+    warmup_runs: 10
+    timed_runs: 100
+    report: [latency_p50_ms, latency_p95_ms, real_time_factor, peak_rss_mb]
+
+  # What the user actually perceives. The model is ~3 ms; VAD endpointing is
+  # typically 100-300 ms, so this is dominated by everything except the model.
+  end_to_end:
+    definition: milliseconds from end of speech to dispatched action, on device
+    includes: [vad_endpointing, feature_extraction, inference, decode]
+
+# ---------------------------------------------------------------------------
+# Reporting. Scores are only comparable inside a footprint budget, so the
+# budget is part of the result rather than a separate boast.
+# ---------------------------------------------------------------------------
+reporting:
+  budget:
+    max_int8_size_kb: 1024
+    max_real_time_factor: 0.5     # on one RPi4 core
+
+  required_table:
+    - exact_command_accuracy on test_human
+    - exact_command_accuracy on test_synth
+    - synth_to_real_gap
+    - intent_accuracy
+    - slot_accuracy per slot, active utterances only
+    - false_accepts_per_hour at the operating point
+    - false_reject_rate at the operating point
+    - accuracy vs snr curve
+    - int8_size_kb, macs_per_utterance, latency_p50_ms, latency_p95_ms
+
+  seed_policy:
+    runs: 3
+    report: mean and spread
+    why: >
+      A two-point difference between two configurations is not a result if the
+      seed-to-seed spread is three points.
