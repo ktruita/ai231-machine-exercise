@@ -134,7 +134,7 @@ def main():
 
     slurp, audio_dir, outdir = REPO / args.slurp, REPO / args.audio, REPO / args.out
     rng = random.Random(SPEC["splits"]["tts_speakers"]["seed"])
-    split_map = {"train": "train", "devel": "dev", "test": "test"}
+    split_map = {"train": "train", "devel": "val", "test": "test"}
 
     # Plan first, cap second, write last - writing 72,000 recordings only to
     # discard most of them would waste an hour of NFS time.

@@ -52,7 +52,7 @@ class WakeWordDataset(Dataset):
         Args:
             root: Speech Commands directory
             wake_word: Target word (default: 'marvin')
-            split: 'train', 'dev' or 'test' (default: 'train')
+            split: 'train', 'val' or 'test' (default: 'train')
             negative_ratio: Negatives sampled per positive (default: 3.0)
             duration_s: Fixed window length in seconds (default: 1.0)
             sample_rate: Audio sample rate (default: 16000)
