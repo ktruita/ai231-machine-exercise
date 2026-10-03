@@ -1,11 +1,10 @@
-"""Measure footprint and latency on the device, per benchmark.yaml.
+"""Measure footprint and latency on the device.
 
-The benchmark's third headline number is footprint on a Raspberry Pi: int8
-size and p95 latency. Numbers from a workstation say nothing about a Pi, so
-this is written to run there unchanged - numpy and onnxruntime only, the same
-two dependencies as demo.py.
+Footprint on a Raspberry Pi is model size and p95 latency. Numbers from a
+workstation say nothing about a Pi, so this is written to run there unchanged -
+numpy and onnxruntime only, the same two dependencies as demo.py.
 
-Protocol, from benchmark.yaml `efficiency.runtime`:
+Protocol:
     one intra-op thread, 10 warmup runs, 100 timed runs
     p50 and p95 latency, real-time factor, peak resident memory
 
@@ -21,9 +20,8 @@ Without the recording named by --clip, it times six seconds of low noise
 instead: the work done is the same whatever the audio holds.
 
 Usage:
-    python bench_device.py
-    python bench_device.py --int8
-    python bench_device.py --model deploy/vcm_mined_fsc deploy/vcm_mined_fsc_s2
+    python bench_device.py                          # fallback_hf's two models
+    python bench_device.py --model deploy/vcm_hf    # one of them
 """
 import argparse
 import platform
@@ -59,7 +57,7 @@ def peak_rss_mb() -> float:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", nargs="+", default=["deploy/vcm_mined_fsc"],
+    ap.add_argument("--model", nargs="+", default=["deploy/vcm_hf", "deploy/vcm_hf_s2"],
                     help="one bundle, or several timed as an ensemble")
     ap.add_argument("--int8", action="store_true", help="time model_int8.onnx instead of model.onnx")
     ap.add_argument("--threads", type=int, default=1)

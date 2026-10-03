@@ -19,25 +19,12 @@ from .features_numpy import LogMelSpectrogram
 ENSEMBLE_KEYS = ("intent_names", "slot_classes", "head_names", "digit_slots",
                  "n_fft", "hop_length", "num_mels", "sample_rate", "window_s")
 
-# How often people say each timer number, and how much that breaks ties.
-# Written by evaluate_numbers.py --write-prior; without it, numbers decode as
-# the two digit heads choose separately
-PRIOR_FILE = Path(__file__).resolve().parent / "number_prior.json"
-NUMBERS = np.arange(1, 61)
-
 
 def softmax(x: np.ndarray) -> np.ndarray:
     """Softmax over the last axis."""
     e = np.exp(x - x.max(axis=-1, keepdims=True))
 
     return e / e.sum(axis=-1, keepdims=True)
-
-
-def log_softmax(x: np.ndarray) -> np.ndarray:
-    """Log-softmax over the last axis."""
-    shifted = x - x.max(axis=-1, keepdims=True)
-
-    return shifted - np.log(np.exp(shifted).sum(axis=-1, keepdims=True))
 
 
 class CommandRecogniser:
@@ -53,7 +40,6 @@ class CommandRecogniser:
         threads: int = 1,
         model_file: str = "model.onnx",
         none_bias: float = 0.0,
-        number_prior: str | Path | None = PRIOR_FILE,
     ) -> None:
         """
         Initialize the recogniser.
@@ -68,17 +54,11 @@ class CommandRecogniser:
                 capture (default: 1)
             model_file: Graph to load from the bundle, model_int8.onnx for the
                 quantised one (default: 'model.onnx')
-            none_bias: Added to the `none` intent before decoding. Negative makes
-                "didn't catch that" rarer. Measured on the two-seed
-                vcm_mined_fsc ensemble at threshold 0.6, -0.5 raised correct
-                commands from 68.7% to 72.2% for 0.5 points more wrong ones,
-                and left 93.3% of out-of-scope requests alone against 95.3%
-                (default: 0.0)
-            number_prior: JSON of real timer-number counts and a weight. The
-                timer number is then read from both digit heads together plus
-                weight x log-prior, so a near tie goes to the number people
-                say more often. None, or no such file, reads each digit head
-                separately (default: vcm/number_prior.json)
+            none_bias: Added to the `none` intent before decoding. Positive makes
+                "didn't catch that" more common, negative rarer. fallback_hf
+                runs at +1.1, the most (correct - wrong) on the validation
+                speakers that still leaves 90% of their out-of-scope requests
+                alone (default: 0.0)
         """
         bundles = [Path(b) for b in (bundle if isinstance(bundle, (list, tuple)) else [bundle])]
         self.meta = json.loads((bundles[0] / "meta.json").read_text())
@@ -104,15 +84,6 @@ class CommandRecogniser:
         self.session = self.sessions[0]
         self.bundles = bundles
         self.none_bias = none_bias
-
-        self.number_prior = None
-        if number_prior is not None and Path(number_prior).exists() and "number" in self.meta["digit_slots"]:
-            spec = json.loads(Path(number_prior).read_text())
-            counts = np.array([spec["counts"].get(str(n), 0) for n in NUMBERS], dtype=np.float64) + spec["smoothing"]
-            tens, ones = self.meta["digit_slots"]["number"]
-            self.number_prior = spec["weight"] * np.log(counts / counts.sum())                   # (60,)
-            self.number_columns = ([self.meta["slot_classes"][tens].index(int(n) // 10) for n in NUMBERS],
-                                   [self.meta["slot_classes"][ones].index(int(n) % 10) for n in NUMBERS])
 
         self.features = LogMelSpectrogram(
             filterbank,
@@ -195,24 +166,8 @@ class CommandRecogniser:
                 continue
             high, low = command.pop(tens), command.pop(ones)
             command[base] = None if high is None or low is None else high * 10 + low
-            if base == "number" and self.number_prior is not None:
-                command[base] = self.read_number(logits)
 
         return {"command": command, "confidence": confidence}
-
-    def read_number(self, logits: dict[str, np.ndarray]) -> int:
-        """
-        Read the timer number from both digit heads together, plus the prior.
-
-        Read separately, the heads put a digit in the wrong place or in both -
-        "fifty" as 55, "one" as 11. Scoring every valid number instead, with
-        how often people say it, sends a near tie to the likelier number.
-        """
-        tens, ones = self.meta["digit_slots"]["number"]
-        scores = log_softmax(logits[tens][0])[self.number_columns[0]] \
-            + log_softmax(logits[ones][0])[self.number_columns[1]]                              # (60,)
-
-        return int(NUMBERS[np.argmax(scores + self.number_prior)])
 
     def __call__(self, waveform: np.ndarray) -> dict:
         """Recognise a command in one call."""

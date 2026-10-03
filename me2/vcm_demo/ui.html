@@ -41,7 +41,7 @@
   .shell {
     height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     max-width: 1180px;
     margin: 0 auto;
     padding: 0 16px 16px;
@@ -171,8 +171,10 @@
   }
 
   @media (max-width: 820px) {
+    .shell { height: auto; min-height: 100%; }
     main { grid-template-columns: 1fr; }
     .readout { order: -1; }
+    .log { max-height: 220px; }
   }
 
   .stage {
@@ -388,6 +390,64 @@
   }
   .log p b { color: var(--text); font-weight: 400; }
   .log p .t { color: #4d5f5d; flex: none; }
+
+  /* the single light: on or off, a colour, a brightness */
+  .lamp.solo { width: 156px; margin: 0 auto 14px; }
+  .lamp.solo .bulb { width: 72px; height: 72px; margin-bottom: 12px; }
+
+  /* ---- schema board ---------------------------------------------------- */
+
+  .schema {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px 16px;
+  }
+  .schema h2 {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .board { display: flex; flex-wrap: wrap; gap: 12px 22px; margin-top: 12px; }
+  .group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .gname {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #4d5f5d;
+    margin-right: 2px;
+  }
+  .cmd {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-2);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .cmd .val {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--bg);
+    color: #5d706d;
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .cmd.hit { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  .cmd.hit .val { background: color-mix(in oklab, var(--accent) 65%, var(--bg)); color: var(--bg); }
+  .cmd.hit .val.hit { background: var(--bg); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -396,7 +456,7 @@
   <header>
     <div class="brand">
       <h1>Marvin</h1>
-      <span class="sub">on-device voice commands</span>
+      <span class="sub">on-device voice commands &middot; the class schema, 19 commands</span>
     </div>
     <div class="state" id="state" data-mode="offline">
       <span class="dot"></span><span id="state-label">waiting for device</span>
@@ -411,7 +471,7 @@
 
   <div class="tryline" aria-live="polite">
     <span class="try-label">say &ldquo;Marvin&rdquo;, then try</span>
-    <span class="try-cmd" id="try-cmd">&ldquo;set a timer for fifteen minutes&rdquo;</span>
+    <span class="try-cmd" id="try-cmd">&ldquo;Start a timer for 30 seconds&rdquo;</span>
   </div>
 
   <main>
@@ -419,10 +479,10 @@
       <div class="heard" id="heard"></div>
 
       <div class="widget show" id="w-idle">
-        <p class="idle-mark">
+        <p class="idle-mark" id="idle-mark">
           say <b>&ldquo;Marvin&rdquo;</b>, then a command<br>
-          &ldquo;set a timer for fifteen minutes&rdquo;<br>
-          &ldquo;turn off the kitchen lights&rdquo;
+          &ldquo;Start a timer for 30 seconds&rdquo;<br>
+          &ldquo;Remind me to Drink water&rdquo;
         </p>
       </div>
 
@@ -437,8 +497,8 @@
       </div>
 
       <div class="widget" id="w-lights">
-        <div class="room" id="room"></div>
-        <div class="caption" id="lights-cap">lights</div>
+        <div class="lamp solo" id="lamp"><div class="bulb" id="bulb"></div><div class="name">lights</div></div>
+        <div class="caption" id="lights-cap">lights off</div>
       </div>
 
       <div class="widget" id="w-media">
@@ -457,6 +517,21 @@
           <div class="cond">Partly cloudy<br>Humidity 74%<br>Wind 11 km/h</div>
         </div>
         <span class="demo-tag">demo data &middot; model classifies intent only</span>
+      </div>
+
+      <div class="widget" id="w-alarm">
+        <div class="bigclock" id="alarm-time">--:--</div>
+        <div class="caption">alarm set</div>
+      </div>
+
+      <div class="widget" id="w-thermo">
+        <div class="bigclock" id="thermo-deg">--&deg;</div>
+        <div class="caption">thermostat set</div>
+      </div>
+
+      <div class="widget" id="w-card">
+        <div class="bigclock" id="card-title">--</div>
+        <div class="caption" id="card-cap"></div>
       </div>
 
       <div class="widget reject" id="w-reject">
@@ -484,6 +559,11 @@
       <h2>History</h2>
       <div class="log" id="log"></div>
     </aside>
+
+    <section class="schema" aria-label="command schema">
+      <h2>The schema &middot; 19 commands &middot; hover a command for its phrasings</h2>
+      <div class="board" id="board"></div>
+    </section>
   </main>
 </div>
 
@@ -492,27 +572,43 @@
   "use strict";
 
   var SEGMENTS = 24;
-
-  // Phrasings the model handles well. Kept away from the known failures:
-  // "fifty" (confused with fifty-five), a bare "turn on lights", "washroom".
-  // Edit freely - testers tend to copy what they see.
-  var EXAMPLES = [
-    "turn off the kitchen lights",
-    "set a timer for thirty minutes",
-    "volume up",
-    "what time is it",
-    "turn on the bedroom lights",
-    "pause the music",
-    "dim the living room lights to seventy percent",
-    "set a timer for ten minutes",
-    "what's the weather like today",
-    "turn the volume down",
-    "play some music",
-    "set a timer for twenty minutes",
-    "stop the music"
-  ];
   var ROTATE_MS = 4000;
-  var ROOMS = ["living room", "kitchen", "bedroom", "bathroom", "office", "garage"];
+
+  // The class dataset's schema, as its variations.csv lists it: 19 commands
+  // with three phrasings each, and three values for the six that take one
+  // ("{v}" marks where the value goes). The example strip and the board are
+  // both drawn from this list.
+  var SCHEMA = [
+    {group: "media", label: "PLAY_MUSIC", phrases: ["Play music", "Start music", "Play some music"]},
+    {group: "media", label: "PAUSE", phrases: ["Pause", "Pause audio", "Pause song"]},
+    {group: "media", label: "STOP", phrases: ["Stop", "Stop playing", "End playback"]},
+    {group: "media", label: "NEXT", phrases: ["Next song", "Skip song", "Play next song"]},
+    {group: "media", label: "VOLUME_UP", phrases: ["Volume up", "Increase the volume", "Turn the volume up"]},
+    {group: "media", label: "VOLUME_DOWN", phrases: ["Volume down", "Lower the volume", "Turn the volume down"]},
+    {group: "info", label: "WEATHER", phrases: ["Weather", "What's the weather?", "Tell me the weather"]},
+    {group: "info", label: "TIME", phrases: ["Time", "What time is it?", "Tell me the time"]},
+    {group: "lights", label: "LIGHT_ON", phrases: ["Lights on", "Power on the lights", "Turn on the lights"]},
+    {group: "lights", label: "LIGHT_OFF", phrases: ["Lights out", "Kill the lights", "Shut off the lights"]},
+    {group: "lights", label: "BRIGHTNESS", slot: "percent", values: ["20 percent", "60 percent", "100 percent"],
+     phrases: ["Brightness {v}", "Adjust brightness to {v}", "Brightness level {v}"]},
+    {group: "lights", label: "COLOR", slot: "color", values: ["Red", "Blue", "Green"],
+     phrases: ["Change color to {v}", "Switch color to {v}", "Set color to {v}"]},
+    {group: "climate", label: "TEMPERATURE", slot: "degrees", values: ["18 degrees", "22 degrees", "26 degrees"],
+     phrases: ["Temperature {v}", "Change the temperature to {v}", "Set the temperature to {v}"]},
+    {group: "time", label: "TIMER", slot: "duration", values: ["10 seconds", "30 seconds", "1 minute"],
+     phrases: ["Timer {v}", "Countdown for {v}", "Start a timer for {v}"]},
+    {group: "time", label: "ALARM", slot: "time", values: ["6:00 AM", "8:00 AM", "9:00 PM"],
+     phrases: ["Alarm {v}", "Wake me up at {v}", "Set an alarm for {v}"]},
+    {group: "phone", label: "CALL", phrases: ["Call", "Make a call", "Make a phone call"]},
+    {group: "phone", label: "MESSAGE", phrases: ["Message", "Send a message", "Send my message"]},
+    {group: "reminders", label: "CREATE_REMINDER", slot: "task", values: ["Drink water", "Study", "Exercise"],
+     phrases: ["Reminder {v}", "Remind me to {v}", "Create a reminder to {v}"]},
+    {group: "reminders", label: "LIST_REMINDERS", phrases: ["Reminders", "Show my reminders", "List my reminders"]}
+  ];
+  var MEDIA = {PLAY_MUSIC: "play", PAUSE: "pause", STOP: "stop", NEXT: "next",
+               VOLUME_UP: "volume_up", VOLUME_DOWN: "volume_down"};
+  var COLORS = {Red: "240,84,84", Blue: "84,140,245", Green: "70,205,120"};
+  var WARM = "245,165,36";
   var ACTIONS = [
     ["play",        "M8 5v14l11-7z"],
     ["pause",       "M6 5h4v14H6zm8 0h4v14h-4z"],
@@ -522,21 +618,35 @@
     ["volume_down", "M4 9v6h4l5 5V4L8 9zm12.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4z"]
   ];
 
+  // A command's sentences, its phrasings crossed with its values in a 3 x 3
+  // Latin square, so that consecutive ones differ in both
+  function sentences(entry) {
+    if (!entry.values) return entry.phrases.slice();
+    var out = [];
+    for (var k = 0; k < 9; k++) {
+      var p = k % 3, v = (p + Math.floor(k / 3)) % 3;
+      out.push(entry.phrases[p].replace("{v}", entry.values[v]));
+    }
+    return out;
+  }
+
+  // All 93 of the schema's sentences, taking each command in turn
+  var EXAMPLES = (function () {
+    var lists = SCHEMA.map(sentences), out = [];
+    for (var r = 0; r < 9; r++) lists.forEach(function (l) { if (r < l.length) out.push(l[r]); });
+    return out;
+  })();
+
   var el = function (id) { return document.getElementById(id); };
   var meter = el("meter"), log = el("log");
   var timerHandle = null, clockHandle = null;
+  var reminders = [];
+  var light = {on: false, color: null, percent: "100 percent"};
+  var board = {};
 
   // ---- static scaffolding -------------------------------------------------
 
   for (var i = 0; i < SEGMENTS; i++) meter.appendChild(document.createElement("i"));
-
-  ROOMS.forEach(function (name) {
-    var d = document.createElement("div");
-    d.className = "lamp";
-    d.dataset.room = name;
-    d.innerHTML = '<div class="bulb"></div><div class="name">' + name + "</div>";
-    el("room").appendChild(d);
-  });
 
   ACTIONS.forEach(function (a) {
     var d = document.createElement("div");
@@ -545,6 +655,40 @@
     d.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + a[1] + '"></path></svg>';
     el("transport").appendChild(d);
   });
+
+  // The board: a chip per command in its group, its values beside it
+  (function () {
+    var group = null, row = null;
+    SCHEMA.forEach(function (entry) {
+      if (entry.group !== group) {
+        group = entry.group;
+        row = document.createElement("div");
+        row.className = "group";
+        var name = document.createElement("span");
+        name.className = "gname";
+        name.textContent = group;
+        row.appendChild(name);
+        el("board").appendChild(row);
+      }
+      var chip = document.createElement("div");
+      chip.className = "cmd";
+      chip.title = entry.phrases.map(function (p) { return p.replace("{v}", "…"); }).join("  ·  ");
+      var label = document.createElement("span");
+      label.className = "lbl";
+      label.textContent = entry.label;
+      chip.appendChild(label);
+      var pills = {};
+      (entry.values || []).forEach(function (v) {
+        var pill = document.createElement("span");
+        pill.className = "val";
+        pill.textContent = v;
+        chip.appendChild(pill);
+        pills[v] = pill;
+      });
+      row.appendChild(chip);
+      board[entry.label] = {chip: chip, slot: entry.slot, pills: pills};
+    });
+  })();
 
   // ---- small helpers ------------------------------------------------------
 
@@ -572,9 +716,15 @@
   function describe(cmd) {
     var parts = [];
     for (var k in cmd) {
-      if (k !== "intent" && cmd[k] !== null && cmd[k] !== undefined) parts.push(k + "=" + cmd[k]);
+      if (k !== "intent" && cmd[k] !== null && cmd[k] !== undefined) parts.push(cmd[k]);
     }
-    return cmd.intent + (parts.length ? "  " + parts.join("  ") : "");
+    return cmd.intent + (parts.length ? "  ·  " + parts.join("  ·  ") : "");
+  }
+
+  // "30 seconds" -> 30
+  function seconds(duration) {
+    var m = /^(\d+)\s*(second|minute|hour)/.exec(duration || "");
+    return m ? parseInt(m[1], 10) * (m[2] === "hour" ? 3600 : m[2] === "minute" ? 60 : 1) : 0;
   }
 
   // ---- panels -------------------------------------------------------------
@@ -582,7 +732,7 @@
   function renderSlots(cmd, rejected) {
     var box = el("slots");
     box.innerHTML = "";
-    var rows = [["intent", rejected ? "rejected" : cmd.intent]];
+    var rows = [["command", rejected ? "rejected" : cmd.intent]];
     for (var k in cmd) if (k !== "intent") rows.push([k, cmd[k]]);
 
     rows.forEach(function (r) {
@@ -601,9 +751,18 @@
     bar.style.background = rejected ? "var(--bad)" : (p >= 0.85 ? "var(--ok)" : "var(--warn)");
   }
 
-  function startTimer(seconds, label) {
+  // Light up the recognised command, and its value, on the board
+  function markSchema(cmd) {
+    for (var label in board) {
+      var b = board[label], hit = !!cmd && cmd.intent === label;
+      b.chip.classList.toggle("hit", hit);
+      for (var v in b.pills) b.pills[v].classList.toggle("hit", hit && cmd[b.slot] === v);
+    }
+  }
+
+  function startTimer(total, label) {
     if (timerHandle) clearInterval(timerHandle);
-    var total = seconds, left = seconds, ring = el("ring-run"), CIRC = 477.5;
+    var left = total, ring = el("ring-run"), CIRC = 477.5;
 
     function tick() {
       el("timer-face").textContent = mmss(left);
@@ -624,34 +783,26 @@
     timerHandle = setInterval(tick, 1000);
   }
 
-  function renderLights(cmd) {
-    var lamps = document.querySelectorAll(".lamp");
-    for (var i = 0; i < lamps.length; i++) {
-      var lamp = lamps[i], isTarget = (lamp.dataset.room === cmd.room);
-      lamp.classList.toggle("target", isTarget);
-      if (!isTarget && cmd.room) continue;
-
-      var on = cmd.intent === "light.dim" ? true : cmd.state === "on";
-      var pct = cmd.intent === "light.dim" && cmd.percent ? cmd.percent : (on ? 100 : 0);
-      lamp.classList.toggle("lit", on);
-      var bulb = lamp.querySelector(".bulb");
-      if (on) {
-        var a = 0.25 + 0.75 * (pct / 100);
-        bulb.style.background = "rgba(245,165,36," + a.toFixed(2) + ")";
-        bulb.style.boxShadow = "0 0 " + Math.round(8 + pct * 0.28) + "px rgba(245,165,36,0.55)";
-      } else {
-        bulb.style.background = "#1b2526";
-        bulb.style.boxShadow = "none";
-      }
+  // One light that keeps its state: on or off, a colour, a brightness
+  function renderLight() {
+    var pct = parseInt(light.percent, 10) || 100, rgb = COLORS[light.color] || WARM, bulb = el("bulb");
+    el("lamp").classList.toggle("lit", light.on);
+    if (light.on) {
+      bulb.style.background = "rgba(" + rgb + "," + (0.25 + 0.75 * pct / 100).toFixed(2) + ")";
+      bulb.style.boxShadow = "0 0 " + Math.round(12 + pct * 0.4) + "px rgba(" + rgb + ",0.55)";
+    } else {
+      bulb.style.background = "#1b2526";
+      bulb.style.boxShadow = "none";
     }
-    el("lights-cap").textContent = (cmd.room || "all lights") +
-      (cmd.intent === "light.dim" && cmd.percent ? " · " + cmd.percent + "%" : " · " + (cmd.state || ""));
+    el("lights-cap").textContent = light.on
+      ? ["lights on", light.color || "warm white", light.percent].join(" · ")
+      : "lights off";
   }
 
-  function renderMedia(cmd) {
+  function renderMedia(label) {
     var keys = document.querySelectorAll(".key");
-    for (var i = 0; i < keys.length; i++) keys[i].classList.toggle("active", keys[i].dataset.action === cmd.action);
-    el("media-cap").textContent = cmd.action ? String(cmd.action).replace("_", " ") : "playback";
+    for (var i = 0; i < keys.length; i++) keys[i].classList.toggle("active", keys[i].dataset.action === MEDIA[label]);
+    el("media-cap").textContent = label.toLowerCase().replace("_", " ");
   }
 
   function runClock() {
@@ -665,6 +816,12 @@
     clockHandle = setInterval(tick, 1000);
   }
 
+  function card(title, caption) {
+    el("card-title").textContent = title;
+    el("card-cap").textContent = caption;
+    show("w-card");
+  }
+
   // ---- event handling -----------------------------------------------------
 
   function onResult(ev) {
@@ -673,6 +830,7 @@
     el("heard").textContent = rejected ? "" : describe(cmd);
     renderSlots(cmd, rejected);
     renderConfidence(ev.confidence || 0, rejected);
+    markSchema(rejected ? null : cmd);
     el("perf-ms").textContent = ev.latency_ms != null ? ev.latency_ms.toFixed(1) + " ms" : "–";
     el("perf-rtf").textContent = ev.rtf != null ? ev.rtf.toFixed(4) : "–";
 
@@ -688,20 +846,48 @@
       return;
     }
 
-    if (cmd.intent === "timer.set") {
-      var n = cmd.number || 0, unit = cmd.unit || "minutes";
-      var mult = unit === "hours" ? 3600 : unit === "seconds" ? 1 : 60;
-      startTimer(n * mult, n + " " + unit);
+    var label = cmd.intent;
+    if (label === "TIMER") {
+      var secs = seconds(cmd.duration);
+      if (secs) {
+        startTimer(secs, cmd.duration);
+      } else {
+        if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+        el("timer-face").classList.remove("done");
+        el("timer-face").textContent = "--:--";
+        el("timer-cap").textContent = "timer · no duration heard";
+      }
       show("w-timer");
-    } else if (cmd.intent === "light.set" || cmd.intent === "light.dim") {
-      renderLights(cmd);
+    } else if (label === "LIGHT_ON" || label === "LIGHT_OFF" || label === "BRIGHTNESS" || label === "COLOR") {
+      light.on = label !== "LIGHT_OFF";
+      if (label === "BRIGHTNESS" && cmd.percent) light.percent = cmd.percent;
+      if (label === "COLOR" && cmd.color) light.color = cmd.color;
+      renderLight();
       show("w-lights");
-    } else if (cmd.intent === "media.control") {
-      renderMedia(cmd);
+    } else if (MEDIA[label]) {
+      renderMedia(label);
       show("w-media");
-    } else if (cmd.intent === "query.info") {
-      if (cmd.kind === "weather") { show("w-weather"); }
-      else { runClock(); show("w-time"); }
+    } else if (label === "WEATHER") {
+      show("w-weather");
+    } else if (label === "TIME") {
+      runClock();
+      show("w-time");
+    } else if (label === "ALARM") {
+      el("alarm-time").textContent = cmd.time || "--:--";
+      show("w-alarm");
+    } else if (label === "TEMPERATURE") {
+      var deg = parseInt(cmd.degrees, 10);
+      el("thermo-deg").textContent = (deg ? deg : "--") + "°";
+      show("w-thermo");
+    } else if (label === "CALL") {
+      card("Calling…", "phone call");
+    } else if (label === "MESSAGE") {
+      card("New message", "message");
+    } else if (label === "CREATE_REMINDER") {
+      if (cmd.task) reminders.push(cmd.task);
+      card("Reminder set", cmd.task || "no task heard");
+    } else if (label === "LIST_REMINDERS") {
+      card("Reminders", reminders.length ? reminders.join(" · ") : "none set yet");
     } else {
       show("w-idle");
     }
@@ -727,7 +913,7 @@
     var target = el("try-cmd"), next = 1;
     var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    function showExample(i) { target.textContent = "\u201c" + EXAMPLES[i] + "\u201d"; }
+    function showExample(i) { target.textContent = "“" + EXAMPLES[i % EXAMPLES.length] + "”"; }
 
     showExample(0);
     setInterval(function () {

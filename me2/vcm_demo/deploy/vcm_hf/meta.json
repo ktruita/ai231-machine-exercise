@@ -1,0 +1,113 @@
+{
+ "run": "vcm_hf:8000",
+ "kind": "command",
+ "sample_rate": 16000,
+ "n_fft": 400,
+ "hop_length": 160,
+ "num_mels": 40,
+ "window_s": 6.0,
+ "head_names": [
+  "intent",
+  "duration",
+  "time",
+  "degrees",
+  "percent",
+  "color",
+  "task"
+ ],
+ "intent_names": [
+  "PLAY_MUSIC",
+  "WEATHER",
+  "TIME",
+  "LIGHT_ON",
+  "LIGHT_OFF",
+  "PAUSE",
+  "STOP",
+  "NEXT",
+  "VOLUME_UP",
+  "VOLUME_DOWN",
+  "CALL",
+  "MESSAGE",
+  "LIST_REMINDERS",
+  "TIMER",
+  "ALARM",
+  "TEMPERATURE",
+  "BRIGHTNESS",
+  "COLOR",
+  "CREATE_REMINDER",
+  "none"
+ ],
+ "slot_classes": {
+  "duration": [
+   "10 seconds",
+   "30 seconds",
+   "1 minute",
+   "N/A"
+  ],
+  "time": [
+   "6:00 AM",
+   "8:00 AM",
+   "9:00 PM",
+   "N/A"
+  ],
+  "degrees": [
+   "18 degrees",
+   "22 degrees",
+   "26 degrees",
+   "N/A"
+  ],
+  "percent": [
+   "20 percent",
+   "60 percent",
+   "100 percent",
+   "N/A"
+  ],
+  "color": [
+   "Red",
+   "Blue",
+   "Green",
+   "N/A"
+  ],
+  "task": [
+   "Drink water",
+   "Study",
+   "Exercise",
+   "N/A"
+  ]
+ },
+ "intent_slots": {
+  "PLAY_MUSIC": [],
+  "WEATHER": [],
+  "TIME": [],
+  "LIGHT_ON": [],
+  "LIGHT_OFF": [],
+  "PAUSE": [],
+  "STOP": [],
+  "NEXT": [],
+  "VOLUME_UP": [],
+  "VOLUME_DOWN": [],
+  "CALL": [],
+  "MESSAGE": [],
+  "LIST_REMINDERS": [],
+  "TIMER": [
+   "duration"
+  ],
+  "ALARM": [
+   "time"
+  ],
+  "TEMPERATURE": [
+   "degrees"
+  ],
+  "BRIGHTNESS": [
+   "percent"
+  ],
+  "COLOR": [
+   "color"
+  ],
+  "CREATE_REMINDER": [
+   "task"
+  ],
+  "none": []
+ },
+ "digit_slots": {}
+}

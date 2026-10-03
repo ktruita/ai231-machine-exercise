@@ -9,6 +9,9 @@ numpy, onnxruntime and sounddevice.
 
 The audio callback thread must never block, so `emit` only appends to per
 client queues and returns; a slow or vanished browser cannot stall recognition.
+
+A browser that connects late is sent the last "hello" - which model is loaded,
+so the page shows that model's commands - and the last result.
 """
 import json
 import queue
@@ -36,6 +39,7 @@ class EventServer:
         self.clients: list[queue.Queue] = []
         self.lock = threading.Lock()
         self.latest: dict | None = None
+        self.hello: dict | None = None
         self.httpd: ThreadingHTTPServer | None = None
 
     def emit(self, event: dict) -> None:
@@ -49,6 +53,8 @@ class EventServer:
         """
         if event.get("type") == "result":
             self.latest = event
+        elif event.get("type") == "hello":
+            self.hello = event
 
         with self.lock:
             for client in list(self.clients):
@@ -112,8 +118,9 @@ class EventServer:
 
                 client = server._subscribe()
                 try:
-                    if server.latest:
-                        self._send(server.latest)
+                    for replay in (server.hello, server.latest):
+                        if replay:
+                            self._send(replay)
                     while True:
                         try:
                             event = client.get(timeout=10)

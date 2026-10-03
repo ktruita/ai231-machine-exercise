@@ -6,15 +6,20 @@ microphone bug; without it the microphone opens and runs continuously.
 
 Deliberately torch-free - it imports only numpy, onnxruntime and sounddevice,
 so the same file runs on a laptop and on a Pi with nothing else installed.
+
+`--bench-log ID` also writes the log the class's live benchmark reads
+(github.com/airimonda/vcm-benchmark): ~/vcm_benchmark/ID_<date-time>.log, one
+JSON line per decision.
 """
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
-from vcm.runtime import PRIOR_FILE, CommandRecogniser, WakeWordDetector
+from vcm.runtime import CommandRecogniser, WakeWordDetector
 
 REPO = Path(__file__).resolve().parent
 
@@ -27,9 +32,7 @@ WAKE_M = 5
 
 # Block RMS that counts as speech, tuned in a quiet room; --speech-level raises
 # it for a noisy one. Setting it from the room's background at start-up was
-# tried and dropped: in simulate_live.py it gained nothing at twice the
-# background, and at three times it cost far-mic speech in a noisy room 9
-# points, because the bar rose above quiet voices
+# tried and dropped: in a noisy room it lifted the bar above quiet voices
 SPEECH_LEVEL = 0.015
 
 LEVEL_BLOCKS = " ▁▂▃▄▅▆▇█"
@@ -152,8 +155,8 @@ class CommandListener:
 
     Holds the recent audio, the wake word's n-of-m smoothing, the endpointer
     and the timers around them, and reports what happened as events. The
-    microphone loop and an offline replay (simulate_live.py) drive the same
-    object, so what is tested is what runs.
+    microphone loop feeds it one block at a time, and an offline replay can
+    feed it the same way, so what is tested is what runs.
 
     Two rules guard the command after the wake word:
         tail   Sound already under way when the wake word fires is the word
@@ -167,16 +170,12 @@ class CommandListener:
                the listener goes back to waiting for the wake word rather than
                taking whatever is said next as a command.
 
-    Replayed through simulate_live.py - "marvin", a pause, a real command -
-    the two rules cut decodes that came back before the command started from
-    7.9% to 1.4%, and raised commands decoded right from 69% to 74%: at a close
-    mic from 74% to 86% in a quiet room and 70% to 78% in a noisy one, and at
-    a far mic 65% against 66% and 63% against 62%, within a stream of before.
-    Three other changes were tried there and dropped: a
-    minimum length for every utterance, which would drop a quarter of real
-    "stop"s; capturing from just before the command's onset, which clipped
-    quiet openings; and setting the speech level from the room, which lifted
-    it above quiet voices.
+    Replayed offline - "marvin", a pause, a real command - the two rules cut
+    the decodes that came back before the command had started. Three other
+    changes were tried and dropped: a minimum length for every utterance,
+    which drops short commands like "stop"; capturing from just before the
+    command's onset, which clipped quiet openings; and setting the speech
+    level from the room, which lifted it above quiet voices.
 
     Flow: (hop,) block -> list of events
     """
@@ -293,11 +292,9 @@ class CommandListener:
         """
         Recognise the utterance that has just ended.
 
-        The capture holds only what arrived after the wake word: the full
-        window would also hold "Marvin", and the model's only real-voice
-        examples of that word are labelled `none` - on held-out commands it
-        cost 6.7 points of intent, recovered in full by this trim even with
-        300 ms of the word left in (evaluate_live.py).
+        The capture holds only what arrived after the wake word: the model
+        was trained on commands alone, never with "Marvin" in front of them,
+        so the word is kept out of the window it decodes.
 
         Returns:
             A "result" event
@@ -312,7 +309,7 @@ class CommandListener:
 
         return {"type": "result", "command": result["command"], "confidence": result["confidence"],
                 "latency_ms": elapsed, "rtf": elapsed / 1000 / self.recogniser.meta["window_s"],
-                "rejected": rejected,
+                "speech_ms": take / self.rate * 1000, "rejected": rejected,
                 "reason": f"confidence {result['confidence']:.0%} below {self.threshold:.0%}" if rejected else ""}
 
 
@@ -336,6 +333,57 @@ def show(event: dict, emit=None) -> None:
         print(f"     {event['latency_ms']:.1f} ms   RTF {event['rtf']:.4f}")
 
 
+class BenchLog:
+    """
+    The log the class's live benchmark reads (airimonda/vcm-benchmark).
+
+    One JSON line per decision, written and flushed the moment it is made: the
+    command and its slot value - OUT_OF_SCOPE for "didn't catch that" - with
+    infer_ms, the features and model, and audio_ms, the window the model
+    processes; speech_ms is how much audio followed the wake word. A line marks
+    each wake word. The file stays open for the whole run, since the benchmark
+    finds this process by it.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        window_s: float,
+        folder: Path = Path.home() / "vcm_benchmark",
+    ):
+        """
+        Args:
+            name: Start of the log file's name, e.g. a student id
+            window_s: Seconds of audio the model takes per decision
+            folder: Where the benchmark looks (default: ~/vcm_benchmark)
+        """
+        folder.mkdir(parents=True, exist_ok=True)
+
+        self.path = folder / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}.log"
+        self.file = open(self.path, "a", buffering=1)
+        self.window_ms = round(window_s * 1000)
+
+    def write(self, event: dict) -> None:
+        """Log a wake word or a decision; other events are not logged."""
+        if event["type"] == "wake":
+            line = {"event": "wake"}
+        elif event["type"] == "result":
+            command = event["command"]
+            rejected = event["rejected"] or command["intent"] == "none"
+            slot = next((v for k, v in command.items() if k != "intent" and v is not None), "")
+            line = {"intent": "OUT_OF_SCOPE" if rejected else command["intent"],
+                    "slot": "" if rejected else slot,
+                    "confidence": round(event["confidence"], 3),
+                    "infer_ms": round(event["latency_ms"], 1), "audio_ms": self.window_ms,
+                    "speech_ms": round(event["speech_ms"])}
+        else:
+            return
+        print(json.dumps(line), file=self.file, flush=True)
+
+    def close(self) -> None:
+        self.file.close()
+
+
 def run_live(
     recogniser: CommandRecogniser,
     detector: WakeWordDetector | None,
@@ -344,6 +392,7 @@ def run_live(
     emit=None,
     threshold: float = 0.0,
     speech_level: float = SPEECH_LEVEL,
+    log: BenchLog | None = None,
 ) -> None:
     """
     Listen continuously and decode commands.
@@ -361,6 +410,7 @@ def run_live(
         emit: Optional callback taking one event dict, used by the browser UI
         threshold: Confidence below which a decode is reported as rejected (default: 0.0)
         speech_level: Block RMS that counts as speech (default: 0.015)
+        log: The benchmark's log, written before each event is shown (default: None)
     """
     import queue
 
@@ -386,17 +436,17 @@ def run_live(
             except queue.Empty:
                 continue
             for event in listener.feed(block):
+                if log is not None:
+                    log.write(event)
                 show(event, emit)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", nargs="+", default=["deploy/vcm_mined_fsc"],
-                    help="one bundle, or several to run as an ensemble")
+    ap.add_argument("--model", nargs="+", default=["deploy/vcm_hf", "deploy/vcm_hf_s2"],
+                    help="one bundle, or several to run as an ensemble (default: fallback_hf's two)")
     ap.add_argument("--none-bias", type=float, default=0.0,
                     help="added to the `none` intent; negative says \"didn't catch that\" less often")
-    ap.add_argument("--no-number-prior", action="store_true",
-                    help="read timer numbers digit by digit, without vcm/number_prior.json")
     ap.add_argument("--wakeword", default="deploy/wakeword_marvin")
     ap.add_argument("--wav", nargs="*", help="replay files instead of listening")
     ap.add_argument("--no-wakeword", action="store_true",
@@ -412,6 +462,9 @@ def main():
                     help="block RMS that counts as speech; raise it if the rms readout sits above it "
                          "while nobody is talking")
     ap.add_argument("--list-devices", action="store_true")
+    ap.add_argument("--bench-log", metavar="ID", default=None,
+                    help="write the class benchmark's log, ~/vcm_benchmark/ID_<date-time>.log, "
+                         "one line per decision")
     args = ap.parse_args()
 
     if args.list_devices:
@@ -420,11 +473,9 @@ def main():
         return
 
     recogniser = CommandRecogniser([REPO / m for m in args.model], threads=args.threads,
-                                   none_bias=args.none_bias,
-                                   number_prior=None if args.no_number_prior else PRIOR_FILE)
+                                   none_bias=args.none_bias)
     print(f"model    {' + '.join(args.model)}  ({recogniser.meta['window_s']}s window, "
           f"{len(recogniser.meta['head_names'])} heads)")
-    print(f"numbers  {'digit by digit' if recogniser.number_prior is None else 'with ' + PRIOR_FILE.name}")
 
     if args.wav:
         run_files(recogniser, args.wav, threshold=args.threshold)
@@ -445,17 +496,26 @@ def main():
 
         size = sum(f.stat().st_size for m in args.model for f in (REPO / m).rglob("*") if f.is_file())
         server.latest = None
-        server.emit({"type": "hello", "size": f"{size / 1e6:.1f} MB"})
+        # The labels tell the page which command set to show examples from
+        server.emit({"type": "hello", "size": f"{size / 1e6:.1f} MB",
+                     "labels": recogniser.meta["intent_names"]})
         print(f"console  {url}   (also reachable on this machine's LAN address)")
+
+    log = None
+    if args.bench_log:
+        log = BenchLog(args.bench_log, recogniser.meta["window_s"])
+        print(f"bench    {log.path}")
 
     try:
         run_live(recogniser, detector, args.device, emit=emit, threshold=args.threshold,
-                 speech_level=args.speech_level)
+                 speech_level=args.speech_level, log=log)
     except KeyboardInterrupt:
         print("\nstopped")
     finally:
         if server is not None:
             server.stop()
+        if log is not None:
+            log.close()
 
 
 if __name__ == "__main__":
