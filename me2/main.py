@@ -123,8 +123,8 @@ def setup_logger(config: DictConfig) -> L.pytorch.loggers.MLFlowLogger | None:
 
         # The spec defines the label space, so a run is only reloadable
         # alongside the spec it was trained against. config.yaml records the
-        # hyperparameters but not this, which made an older checkpoint
-        # unloadable after the number head was decomposed.
+        # hyperparameters but not this, which left an older checkpoint
+        # unloadable once the label space changed.
         spec_path = Path(config.module.spec_path)
         if spec_path.exists():
             shutil.copy(spec_path, exp_dir / "commands.yaml")

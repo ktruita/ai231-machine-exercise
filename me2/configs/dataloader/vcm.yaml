@@ -23,7 +23,7 @@ augment:
 
 # Validation stays clean so model selection is not chasing a moving target and
 # the number stays comparable with the un-augmented runs. Robustness is measured
-# separately by the SNR sweep in benchmark.yaml.
+# separately, by evaluate_benchmark.py --robustness.
 validation_args:
   split: val
   random_offset: False

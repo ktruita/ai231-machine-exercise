@@ -1,0 +1,50 @@
+# @package _global_
+# fallback_hf's command model: trained on the class's Hugging Face repo alone
+# (airimonda/ai231-me2-voice-commands), as built by fetch_class_dataset.py,
+# add_class_dataset.py and build_hf_only.py:
+#
+#   c_train   the dataset's train split, its supplemental synthetic clips in
+#             train voices, and its synthetic_negatives train clips as out of
+#             scope - 14,033 clips
+#   c_val     12% of the train split's speakers, held out to pick each run's
+#             checkpoint (select_checkpoint.py) and the demo's rejection bias
+#
+# No other download: background noise comes from the negatives' noise_only
+# clips (class_data/v2/hf_only/noise) instead of MUSAN, and there is no room
+# reverb, since the repo holds no impulse responses. The microphone, codec and
+# gain effects are generated in code.
+#
+# The 685k-parameter network from random initialisation, masked loss and class
+# weights at power 0.5; 8,000 steps is about 70 passes over c_train, with a
+# checkpoint every 500.
+#
+# fallback_hf averages two seeds of this config:
+#   python main.py experiment=hf
+#   python main.py experiment=hf seed=232 name=vcm_hf_s2 exp_dir=modelstore/vcm_hf_s2
+module:
+  module:
+    masked_loss: True
+    class_weight_power: 0.5
+  backbone:
+    dims: [160, 160, 256, 320]
+
+dataloader:
+  dataset:
+    data_dir: class_data/v2/hf_only
+    split: c_train
+    exclude_negative_models: []
+  augment:
+    musan_dir: class_data/v2/hf_only/noise
+    rir_dir: class_data/v2/hf_only/no_impulse_responses
+    reverb_probability: 0.0
+    response_probability: 0.6
+    codec_probability: 0.15
+  validation_args:
+    split: c_val
+  test_args:
+    split: c_test
+
+name: vcm_hf
+exp_dir: modelstore/${name}
+max_steps: 8000
+save_step_frequency: 500

@@ -49,12 +49,12 @@ class VoiceCommandModule(BaseLightningModule):
                 score well by always answering N/A (default: True)
             label_smoothing: Cross-entropy label smoothing (default: 0.0)
             class_weight_power: Exponent on inverse class frequency. The training
-                mix is uneven - `none` is 36% of utterances against 7% for
-                timer.set, and `play` is 49% of media actions against 9% for
-                `stop` - so an unweighted loss lets the model win by following
-                the prior. 0 disables weighting, 1 is full inverse frequency,
-                0.5 softens it so rare classes are helped without being
-                over-weighted into noise (default: 0.5)
+                mix is uneven - a command with a slot is recorded once per
+                value, so COLOR is 10.2% of the class train set against 2.3%
+                for MESSAGE - so an unweighted loss lets the model win by
+                following the prior. 0 disables weighting, 1 is full inverse
+                frequency, 0.5 softens it so rare classes are helped without
+                being over-weighted into noise (default: 0.5)
         """
         super().__init__()
         self.__dict__.update(locals())
@@ -75,6 +75,9 @@ class VoiceCommandModule(BaseLightningModule):
         self.intent_names = self.backbone.intent_names
 
         self.save_hyperparameters(ignore=["cfg"])
+
+        # A run resumed mid-epoch skips on_train_epoch_start, which zeroes these
+        self.reset_counts()
 
     def on_train_start(self):
         """
@@ -98,10 +101,11 @@ class VoiceCommandModule(BaseLightningModule):
                 counts["intent"][dataset.intent_index[record["intent"]]] += 1
 
             # Count N/A as its own class, and only over the utterances where the
-            # slot is active. Skipping it left N/A at zero, which clamped to one
-            # and so outweighed a room with 1,600 examples by roughly forty to
-            # one - the model was being trained to answer "no room".
-            active = set(dataset.intent_slots[record["intent"]]) | dataset.expand_supervised(record)
+            # slot is active. Skipping it left N/A at zero, which clamps to one
+            # and so outweighs a value with 1,600 examples by roughly forty to
+            # one - the model would be trained to answer "no value".
+            active = (set(dataset.intent_slots[record["intent"]]) | dataset.expand_supervised(record)) \
+                - dataset.expand_unsupervised(record)
             for name in self.slot_names:
                 if name not in active:
                     continue
@@ -144,8 +148,9 @@ class VoiceCommandModule(BaseLightningModule):
         Sum one cross-entropy per head.
 
         The slot heads are the whole reason masked_loss exists. A slot is N/A on
-        roughly 80% of utterances, so grading every head on every utterance lets
-        a head reach high accuracy by never predicting a value at all.
+        about 90% of utterances - a command uses at most one of the six - so
+        grading every head on every utterance lets a head reach high accuracy
+        by never predicting a value at all.
 
         Args:
             logits: Logits keyed by head name
@@ -196,7 +201,7 @@ class VoiceCommandModule(BaseLightningModule):
         Accumulate correct counts over the epoch.
 
         Counts are accumulated rather than averaged per batch because a slot is
-        active on roughly a sixth of the data, and the manifests are ordered by
+        active on about a tenth of the data, and the manifests are ordered by
         intent. An unshuffled validation batch can therefore contain no active
         utterance for a slot at all, and averaging per-batch ratios averages in
         those empty batches as zeros.

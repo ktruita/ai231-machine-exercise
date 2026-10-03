@@ -9,6 +9,13 @@ The graph starts at the mel spectrogram rather than the waveform because
 torch.stft does not export ("STFT does not currently support complex types").
 The front-end therefore lives in vcm/features_numpy.py, which is verified to
 give identical predictions to the torch version.
+
+Bundles are written to vcm_demo/deploy/<run>/, where the demo reads them. A run
+named as run:step exports that checkpoint, as select_checkpoint.py chose it.
+
+Usage:
+    python export_onnx.py vcm_hf:8000 vcm_hf_s2:7500    # fallback_hf's two models
+    python export_onnx.py wakeword_marvin
 """
 import argparse
 import json
@@ -59,7 +66,7 @@ class MelToLogits(torch.nn.Module):
         return tuple(output[name] for name in self.head_names)
 
 
-def load_module(run_dir: Path, spec_path: str):
+def load_module(run_dir: Path, spec_path: str, step: int | None = None):
     """
     Load a trained module in eval mode, the same way predict.py does.
 
@@ -69,13 +76,15 @@ def load_module(run_dir: Path, spec_path: str):
             itself when constructing its heads, so overriding only the metadata
             would leave the backbone shaped by whatever commands.yaml currently
             says - which is how a pre-decomposition checkpoint failed to load.
+        step: Checkpoint step to load, the newest if None (default: None)
     """
     cfg = OmegaConf.load(run_dir / "config.yaml")
     cfg.module.spec_path = str(spec_path)
     OmegaConf.resolve(cfg.module)
 
     module = instantiate(cfg.module.module, cfg.module)
-    ckpt = find_latest_checkpoint(run_dir / "checkpoints")
+    ckpt = (find_latest_checkpoint(run_dir / "checkpoints") if step is None
+            else run_dir / "checkpoints" / f"checkpoint_step_{step}.ckpt")
     module.load_state_dict(torch.load(ckpt, weights_only=False, map_location="cpu")["state_dict"])
 
     return module.eval(), cfg
@@ -83,8 +92,8 @@ def load_module(run_dir: Path, spec_path: str):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("runs", nargs="+", help="run directories under modelstore/")
-    ap.add_argument("--out", default="deploy")
+    ap.add_argument("runs", nargs="+", help="run directories under modelstore/, each as run or run:step")
+    ap.add_argument("--out", default="vcm_demo/deploy")
     ap.add_argument("--spec", default="commands.yaml",
                     help="spec that defined this run's label space; runs trained "
                          "before a spec change need the spec they were trained against")
@@ -96,9 +105,10 @@ def main():
     intent_names, slot_classes = build_label_space(spec)
     audio = spec["audio"]
 
-    for run in args.runs:
+    for spec_run in args.runs:
+        run, _, step = spec_run.partition(":")
         run_dir = REPO / "modelstore" / run
-        module, cfg = load_module(run_dir, REPO / args.spec)
+        module, cfg = load_module(run_dir, REPO / args.spec, int(step) if step else None)
         backbone = module.backbone
 
         is_wakeword = not hasattr(backbone, "intent_names")
@@ -132,7 +142,7 @@ def main():
         np.save(out_dir / "filterbank.npy", filterbank)
 
         meta = {
-            "run": run,
+            "run": spec_run,
             "kind": "wakeword" if is_wakeword else "command",
             "sample_rate": audio["sample_rate"],
             "n_fft": cfg.module.features.n_fft,

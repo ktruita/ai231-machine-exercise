@@ -1,23 +1,23 @@
-"""Measure the benchmark's headline: capability, restraint and robustness.
+"""Measure a model on the class test: capability, restraint and robustness.
 
-`benchmark.yaml` defines deployment readiness as three numbers, and until now
-none was reported. This computes the first two, and the robustness curve:
+Three numbers describe a model for deployment. This computes them on the class
+dataset's test split (add_class_dataset.py), whose speakers no model trained on:
 
-    restraint    false accepts per hour on test_negatives (3.3 h of real
-                 non-command speech), swept against the confidence threshold
-    capability   exact command accuracy on test_human (3,327 real commands,
-                 all five intents) at the operating point the restraint fixes
+    restraint    false accepts per hour on c_test_negatives, the out-of-scope
+                 clips, swept against the confidence threshold
+    capability   exact command accuracy on c_test_human (4,367 commands, all
+                 19) with no threshold, at the demo's 0.6 and at the operating
+                 point the restraint fixes
     robustness   capability under noise and room reverberation the models
-                 never trained on (--robustness)
+                 never trained on (--robustness; it reads MUSAN and
+                 RIRS_NOISES under data/augment/)
 
-The operating point. The spec says "highest confidence threshold whose
-false_accepts_per_hour <= target", but false accepts fall as the threshold
-rises, so the highest qualifying threshold is always ~1.0 and rejects
-everything. The meaningful reading is the lowest threshold that meets the
-target - the most permissive setting that still honours restraint - and that
-is what is computed here.
+The operating point is the lowest threshold whose false accepts per hour meet
+the target - the most permissive setting that still honours restraint. Read
+the other way, as the highest threshold that meets it, it is always ~1.0,
+since false accepts fall as the threshold rises, and rejects everything.
 
-Confidence is the intent head's max softmax, as the spec asks. These models
+Confidence is the intent head's max softmax, as in the demo. These models
 output p = 1.000 on many utterances, where floating-point confidences tie, so
 utterances are ranked by the residual mass S = sum over the losing intents of
 exp(z_i - z_max). p_max = 1 / (1 + S): the same order, without the ties.
@@ -28,9 +28,9 @@ added to the `none` intent. The degradations are seeded, so every run - single
 model or ensemble - hears the same noisy and reverberant audio.
 
 Usage:
-    python evaluate_benchmark.py modelstore/vcm_mined_fsc modelstore/vcm_mined_fsc_s2
-    python evaluate_benchmark.py modelstore/vcm_mined_fsc --robustness
-    python evaluate_benchmark.py "modelstore/vcm_mined_fsc+modelstore/vcm_mined_fsc_s2@-0.2" --robustness --number-prior
+    python evaluate_benchmark.py modelstore/vcm_hf:8000 modelstore/vcm_hf_s2:7500
+    python evaluate_benchmark.py "modelstore/vcm_hf:8000+modelstore/vcm_hf_s2:7500@1.1" --robustness \
+        --group-by accent_group model variation        # fallback_hf, as the demo runs it
 """
 import argparse
 import json
@@ -42,12 +42,12 @@ import numpy as np
 import torch
 from torch import nn
 
-import number_prior
 from dataloaders.augment import AudioAugment
 from dataloaders.vcm_dataloader import VoiceCommandDataset
 from evaluate import load_run, spec_slots
 
 REPO = Path(__file__).resolve().parent
+# Restraint: at most one false accept an hour from the command model alone
 TARGET_FA_PER_HOUR = 1.0
 DEMO_THRESHOLD = 0.6
 WAKE_FA_PER_HOUR = 0.5          # 3-of-5 windows over 0.99, from vcm_demo/demo.py
@@ -109,7 +109,9 @@ def load_spec(spec: str, device: str) -> tuple:
     Args:
         spec: A run directory, or several joined by '+', optionally followed by
             '@<bias>' added to the `none` intent - for example
-            modelstore/vcm_mined_fsc+modelstore/vcm_mined_fsc_s2@-0.2
+            modelstore/vcm_hf:8000+modelstore/vcm_hf_s2:7500@1.1. A run pins a
+            checkpoint as run:step (select_checkpoint.py), else its newest is
+            used
         device: Device to run on
 
     Returns:
@@ -117,7 +119,10 @@ def load_spec(spec: str, device: str) -> tuple:
     """
     runs, _, bias = spec.partition("@")
     dirs = runs.split("+")
-    members = [load_run(d, None, device)[0] for d in dirs]
+    members = []
+    for run in dirs:
+        path, _, step = run.partition(":")
+        members.append(load_run(path, int(step) if step else None, device)[0])
     name = "+".join(Path(d).name for d in dirs) + (f"@{bias}" if bias else "")
 
     if len(members) == 1 and not bias:
@@ -126,19 +131,16 @@ def load_spec(spec: str, device: str) -> tuple:
     return Ensemble(members, float(bias or 0.0)).to(device).eval(), name
 
 
-def score_set(module, dataset, device: str, transform=None, batch: int = 256, prior: tuple | None = None) -> dict:
+def score_set(module, dataset, device: str, transform=None, batch: int = 256) -> dict:
     """
     Decode a dataset and keep what the threshold sweep needs.
 
     Args:
         module: Trained module
-        dataset: VoiceCommandDataset over test_human or test_negatives
+        dataset: VoiceCommandDataset over c_test_human or c_test_negatives
         device: Device to run on
         transform: Optional function applied to each waveform, for degradation
         batch: Items per forward pass (default: 256)
-        prior: (log-prior, weight) to read timer numbers with, as the demo
-            does with number_prior.json; None reads each digit head alone
-            (default: None)
 
     Returns:
         Arrays of truth intent, predicted intent, residual mass S, exact-match
@@ -155,14 +157,6 @@ def score_set(module, dataset, device: str, transform=None, batch: int = 256, pr
                 waves = [transform(w) for w in waves]
             logits = module(torch.from_numpy(np.stack(waves).astype(np.float32)).to(device))
             commands = module.backbone.decode(logits)
-            if prior is not None:
-                tens, ones = module.backbone.digit_slots["number"]
-                scores = number_prior.joint(
-                    *(torch.log_softmax(logits[h].double(), dim=-1).cpu().numpy() for h in (tens, ones)),
-                    module.backbone.slot_classes[tens], module.backbone.slot_classes[ones])
-                for command, number in zip(commands, number_prior.read(scores, *prior)):
-                    if "number" in command:
-                        command["number"] = int(number)
 
             z = logits["intent"].double().cpu()
             top = z.max(dim=-1, keepdim=True).values
@@ -170,8 +164,10 @@ def score_set(module, dataset, device: str, transform=None, batch: int = 256, pr
 
             for k, i in enumerate(idx):
                 record = records[i]
+                # A slot the row cannot give a value for is not graded, as in training
                 truth = {"intent": record["intent"]}
-                truth.update({n: record["slots"].get(n) for n in spec_slots(module, record["intent"])})
+                truth.update({n: record["slots"].get(n) for n in spec_slots(module, record["intent"])
+                              if n not in record.get("unsupervise", ())})
                 pred = commands[k]
                 exact = pred["intent"] == truth["intent"] and all(
                     pred.get(n) == v for n, v in truth.items() if n != "intent")
@@ -265,35 +261,31 @@ def main():
                     help="run directories; join with '+' for an ensemble, end with '@<bias>' to bias `none`")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--robustness", action="store_true")
-    ap.add_argument("--number-prior", action="store_true",
-                    help="read timer numbers with vcm_demo/vcm/number_prior.json, as the demo does")
-    ap.add_argument("--out", default="logs/benchmark_core.json")
+    ap.add_argument("--spec", default="commands.yaml", help="command spec the runs were trained on")
+    ap.add_argument("--data", default="class_data/v2/dataset", help="directory holding the c_test manifests")
+    ap.add_argument("--group-by", nargs="*", default=[],
+                    help="manifest fields to break capability down by, e.g. accent_group variation")
+    ap.add_argument("--out", default="logs/benchmark_hf.json")
     args = ap.parse_args()
-    prior = number_prior.load() if args.number_prior else None
 
-    data, spec = str(REPO / "data/dataset"), str(REPO / "commands.yaml")
-    human_set = VoiceCommandDataset(data_dir=data, spec_path=spec, split="test_human")
-    negative_set = VoiceCommandDataset(data_dir=data, spec_path=spec, split="test_negatives")
+    data, spec = str(REPO / args.data), str(REPO / args.spec)
+    human_set = VoiceCommandDataset(data_dir=data, spec_path=spec, split="c_test_human")
+    negative_set = VoiceCommandDataset(data_dir=data, spec_path=spec, split="c_test_negatives")
     hours = sum(r.get("duration_s") or 0 for r in negative_set.records) / 3600
-    print(f"test_human {len(human_set):,} commands   test_negatives {len(negative_set):,} "
+    print(f"c_test_human {len(human_set):,} commands   c_test_negatives {len(negative_set):,} "
           f"utterances, {hours:.2f} h   target {TARGET_FA_PER_HOUR} FA/h "
           f"(at most {int(hours * TARGET_FA_PER_HOUR)} false accepts)\n")
 
     results = {}
     for run in args.runs:
         module, name = load_spec(run, args.device)
-        human = score_set(module, human_set, args.device, prior=prior)
-        negatives = score_set(module, negative_set, args.device, prior=prior)
+        human = score_set(module, human_set, args.device)
+        negatives = score_set(module, negative_set, args.device)
 
         argmax = at_threshold(human, negatives, math.inf)
         demo = at_threshold(human, negatives, 1 / DEMO_THRESHOLD - 1)
         op_residual = operating_point(negatives, TARGET_FA_PER_HOUR)
         op = at_threshold(human, negatives, op_residual) if op_residual >= 0 else None
-
-        # Cross-check against the rejection measured earlier on the same three
-        # sources: SLURP, STOP and Speech Commands negatives, 2,017 utterances
-        subset = np.isin(negatives["source"], ["slurp", "stop", "speech_commands"])
-        rejection = float((negatives["pred"][subset] == "none").mean())
 
         sweep = []
         for p in np.concatenate([np.linspace(0, 0.99, 100), 1 - np.logspace(-2, -8, 61)]):
@@ -305,7 +297,6 @@ def main():
             fa_by_source[source] = int(((negatives["pred"] != "none") & mask).sum())
 
         print(f"=== {name}")
-        print(f"  rejection on SLURP+STOP+Speech Commands negatives: {rejection:.3f} (n={int(subset.sum()):,})")
         for label, r in (("argmax (no threshold)", argmax), (f"demo threshold {DEMO_THRESHOLD}", demo),
                          ("operating point", op)):
             if r is None:
@@ -321,7 +312,21 @@ def main():
         print(f"  false accepts at argmax by source: {fa_by_source}\n")
 
         results[name] = {"argmax": argmax, "demo": demo, "operating_point": op,
-                         "rejection_check": rejection, "fa_by_source": fa_by_source, "sweep": sweep}
+                         "fa_by_source": fa_by_source, "sweep": sweep}
+
+        # Capability by a manifest field, no threshold and at the demo's
+        for field in args.group_by:
+            groups = np.array([str(r.get(field, "?")) for r in human_set.records])
+            breakdown = {}
+            for label, max_residual in (("argmax", math.inf), ("demo", 1 / DEMO_THRESHOLD - 1)):
+                acts = (human["pred"] != "none") & (human["residual"] <= max_residual)
+                right = human["exact"] & acts
+                breakdown[label] = {g: float(right[groups == g].mean()) for g in sorted(set(groups))}
+            counts = {g: int((groups == g).sum()) for g in sorted(set(groups))}
+            results[name][f"by_{field}"] = {"n": counts, **breakdown}
+            print(f"  capability by {field} (no threshold / at {DEMO_THRESHOLD}):")
+            for g in sorted(counts, key=lambda g: breakdown["argmax"][g]):
+                print(f"    {g[:44]:44s} n={counts[g]:5d}  {breakdown['argmax'][g]:.3f} / {breakdown['demo'][g]:.3f}")
 
         if args.robustness:
             conditions = {"clean": None}
@@ -334,19 +339,12 @@ def main():
 
             curve = {}
             for label, transform in conditions.items():
-                degraded = score_set(module, human_set, args.device, transform, prior=prior)
+                degraded = score_set(module, human_set, args.device, transform)
                 r = at_threshold(degraded, negatives, math.inf)
                 curve[label] = {"capability": r["capability"], "capability_macro": r["capability_macro"]}
                 print(f"  robustness  {label:26s} capability {r['capability']:.3f}  macro {r['capability_macro']:.3f}")
-
-            native = {}
-            for flag in ("Yes", "No"):
-                idx = [i for i, rec in enumerate(human_set.records) if rec.get("native") == flag]
-                if idx:
-                    native[flag] = float(human["exact"][idx].mean())
-            print(f"  native vs L2 (STOP native column, argmax): {native}\n")
+            print()
             results[name]["robustness"] = curve
-            results[name]["native"] = native
 
         del module
         torch.cuda.empty_cache()

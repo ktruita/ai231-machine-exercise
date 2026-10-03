@@ -27,11 +27,9 @@ MUSAN_SOURCES = ("noise", "music")
 RIR_TRAIN_DIR = "simulated_rirs"
 RIR_EVAL_DIR = "real_rirs_isotropic_noises"
 
-# Share of MUSAN held out for evaluation. commands.yaml has always declared
-# partition_noise_pool, but until this split existed train and test drew from
-# the same 1,590 files, so a noise-robustness score measured noise the model
-# had trained on. Runs before the fix saw every file; evaluate them against
-# RIRS_NOISES/pointsource_noises, which no run has used.
+# Share of the noise pool held out for evaluation, so a noise-robustness score
+# does not measure noise the model trained on. evaluate_benchmark.py goes
+# further and mixes in RIRS_NOISES/pointsource_noises, which no run trains on.
 NOISE_EVAL_FRACTION = 0.2
 
 
@@ -161,9 +159,11 @@ class AudioAugment:
         self.noise_files = list_noise_files(musan_dir, split=split)
         self.rir_files = list_rir_files(rir_dir, split)
 
-        if not self.noise_files:
+        # Files are needed only for the effects that can fire: a run on the class
+        # dataset alone has noise clips but no impulse responses, and no reverb
+        if not self.noise_files and noise_probability > 0:
             raise ValueError(f"No MUSAN noise found under {musan_dir}")
-        if not self.rir_files:
+        if not self.rir_files and reverb_probability > 0:
             raise ValueError(f"No impulse responses found under {rir_dir} for split '{split}'")
 
         self.snr_db = snr_db

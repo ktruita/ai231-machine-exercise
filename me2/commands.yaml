@@ -1,318 +1,91 @@
 # AI 231 ME2 - Voice Command Model
-# Command specification: the single source of truth for this project.
-# Read by: the data generator, the model head definitions, the benchmark
-# scorer, and the RPi demo dispatcher.
+# The command set the class agreed on, airimonda/ai231-me2-voice-commands on
+# Hugging Face: 19 commands with three phrasings each and three values per
+# slot - 93 variations - plus `none` for the dataset's OUT_OF_SCOPE. Calls,
+# messages and reminders are commands too: the dataset defines them as closed
+# phrases, so a classifier needs no transcript to tell them apart.
+#
+# Values are exactly the dataset's slot_value strings (its variations.csv).
+# `schema` lists the dataset's phrasings, for reference; training reads the
+# recordings, not templates. add_class_dataset.py builds the data.
 
 version: 1
 
 audio:
   sample_rate: 16000
-  # Measured, not guessed: the longest producible sentence ("set the living room
-  # lights to seventy percent") runs 3.05s on the slowest voice at length_scale
-  # 1.15, plus up to 0.5s padding = 3.55s. Round up to 4.0s.
-  # Widened from 4.0: 15% of SLURP recordings run longer, and real requests put
-  # the command at the END - "olly can you please turn off the light of my bed
-  # room" - so truncating the tail removes the command itself.
   max_duration_s: 6.0
-  # Piper emits speech that starts and ends flush against the clip edges, which
-  # chops the final phoneme's decay and sounds cut off. It is also a train/deploy
-  # mismatch: at inference the VAD always hands the model some lead-in and
-  # lead-out. Pad both ends at synthesis time.
-  lead_silence_ms: [80, 200]    # sampled per utterance
-  trail_silence_ms: [150, 300]
 
-# ---------------------------------------------------------------------------
-# Slots - the arguments a command can carry. Each slot becomes one classifier
-# head on the model. Every head gets an implicit N/A class, used when the slot
-# does not apply to the utterance ("play music" has no room).
-#
-# NOTE: "on" and "off" are quoted. Unquoted, YAML 1.1 parses them as booleans.
-# ---------------------------------------------------------------------------
 slots:
-
-  state:
-    values: ["on", "off"]
-
-  room:
-    values: ["living room", "kitchen", "bedroom", "bathroom", "office", "garage"]
-
+  duration:
+    values: ["10 seconds", "30 seconds", "1 minute"]
+  time:
+    values: ["6:00 AM", "8:00 AM", "9:00 PM"]
+  degrees:
+    values: ["18 degrees", "22 degrees", "26 degrees"]
   percent:
-    # 90 not 100: light.dim is the only consumer and it caps at 90 (dimming TO
-    # 100% is a contradiction). A global range of 100 left one class that could
-    # never be trained and could only ever fire as a false positive.
-    type: number
-    range: [10, 90]
-    step: 10
-    spoken_suffix: "percent"
+    values: ["20 percent", "60 percent", "100 percent"]
+  color:
+    values: ["Red", "Blue", "Green"]
+  task:
+    values: ["Drink water", "Study", "Exercise"]
 
-  number:
-    type: number
-    range: [1, 60]
-    step: 1
-    # Two digit heads rather than 61 flat classes. Flat, the model has to learn
-    # every number independently and "fifteen" shares nothing with "fifty" - it
-    # collapsed the pair onto one class and flip-flopped which one it kept
-    # between runs. Split, the tens digit is a 7-way decision with ~8x more
-    # examples per class, and the ones digit is shared across every number.
-    decompose: digits
-
-  unit:
-    values: ["seconds", "minutes", "hours"]
-    # Used two ways: automatically when number == 1 ("one minute"), and on
-    # demand via the {unit:singular} modifier for attributive use, where
-    # English takes the singular regardless of count ("a ten minute timer").
-    singular: {seconds: "second", minutes: "minute", hours: "hour"}
-
-  action:
-    values: ["play", "pause", "stop", "next", "volume_up", "volume_down"]
-
-  kind:
-    values: ["weather", "time"]
-
-# ---------------------------------------------------------------------------
-# Intents - one per thing the device can do. `covers` refers to the numbered
-# command list in the ME2 brief.
-#
-# Two template styles:
-#   templates     - {slot} placeholders, filled from the slot's values
-#   templates_by  - one fixed phrasing list per slot value, for intents whose
-#                   wordings are irregular ("louder" is not "volume up")
-# ---------------------------------------------------------------------------
 intents:
-
-  light.set:
-    covers: [3]
-    slots: [state, room]
-    optional: [room]
-    templates:
-      - "turn {state} the {room} lights"
-      - "turn the {room} lights {state}"
-      - "turn {state} the lights in the {room}"
-      - "switch {state} the {room} lights"
-      - "{room} lights {state}"
-      - "turn {state} the lights"
-      - "turn the lights {state}"
-      - "lights {state}"
-
-  light.dim:
-    covers: [4]
-    slots: [room, percent]
-    # percent is optional because "dim the lights" is a command people actually
-    # give - probably more often than naming a number. Requiring a percentage
-    # made that form inexpressible, and left this the only intent with no real
-    # training audio: SLURP has 222 real dim/brighten utterances but only 20
-    # carry an amount, and those read "a bit" or "to max" rather than a value.
-    optional: [room, percent]
-    # dimming TO 100% is a contradiction - that is "full brightness"
-    slot_ranges: {percent: [10, 90]}
-    templates:
-      - "dim the {room} lights to {percent}"
-      - "set the {room} lights to {percent}"
-      - "dim the {room} lights to {percent} brightness"
-      - "dim the lights to {percent}"
-      - "set the lights to {percent}"
-      - "set brightness to {percent}"
-      - "dim the {room} lights"
-      - "dim the lights"
-      - "dim the lights a bit"
-      - "make the {room} lights dimmer"
-      - "make the lights dimmer"
-      - "lower the brightness"
-
-  timer.set:
-    covers: [5]
-    slots: [number, unit]
-    # "set a timer for fifty nine hours" is grammatical but nobody says it
-    number_range_by_unit: {hours: [1, 12]}
-    templates:
-      - "set a timer for {number} {unit}"
-      - "set timer for {number} {unit}"
-      - "start a timer for {number} {unit}"
-      - "set a {number} {unit:singular} timer"
-      - "timer for {number} {unit}"
-      - "count down {number} {unit}"
-
-  media.control:
-    covers: [1, 8]
-    slots: [action]
-    templates_by:
-      action:
-        play:        ["play music", "play some music", "start the music", "play",
-                      "play a song", "put on some music", "start playing",
-                      "music please", "play something"]
-        pause:       ["pause", "pause the music", "pause the song", "pause it",
-                      "pause playback", "pause please"]
-        # "turn off the music" is deliberately close to light.set's "turn off the
-        # lights" - a useful hard pair that forces the model to hear the object,
-        # not just the verb.
-        stop:        ["stop", "stop the music", "stop playing", "stop it",
-                      "stop playback", "turn off the music"]
-        next:        ["next", "next track", "next song", "skip", "skip this song",
-                      "skip it", "play the next song", "go to the next track"]
-        volume_up:   ["volume up", "turn it up", "louder", "turn the volume up",
-                      "turn up the volume", "make it louder", "increase the volume",
-                      "raise the volume", "crank it up"]
-        volume_down: ["volume down", "turn it down", "quieter",
-                      "turn the volume down", "lower the volume", "make it quieter",
-                      "decrease the volume", "reduce the volume", "soften the volume"]
-
-  query.info:
-    covers: [2]
-    slots: [kind]
-    # These templates are already questions, so request-form prefixes do not
-    # compose with them. Address terms and a trailing "please" still do.
-    imperative: false
-    templates_by:
-      kind:
-        weather: ["what's the weather", "what is the weather", "how's the weather",
-                  "what's the weather like", "what's the weather today",
-                  "what's the weather like today", "is it going to rain",
-                  "is it raining", "do i need an umbrella", "how hot is it outside",
-                  "how cold is it outside", "what's the temperature outside",
-                  "give me the weather", "tell me the weather", "weather",
-                  "weather please", "what's it like outside", "how is it outside"]
-        time:    ["what time is it", "what's the time", "tell me the time",
-                  "do you have the time", "what time is it now", "give me the time",
-                  "time", "time please", "what's the current time",
-                  "could you tell me the time", "what time do you have"]
-
-  none:
-    covers: []
+  PLAY_MUSIC:
     slots: []
-    source: negatives   # out-of-domain speech, not generated from templates
-
-# ---------------------------------------------------------------------------
-# Generation rules the synthesiser must apply.
-# ---------------------------------------------------------------------------
-generation:
-  # Carrier phrases. Every template is a bare imperative - "turn off the kitchen
-  # lights" - but people wrap commands in address and politeness: SLURP's real
-  # recordings look like "olly can you please turn off the light of my bed room".
-  # A model trained only on bare templates has never heard the wrapper, and
-  # averaging over a one-second preamble buries the command.
-  carriers:
-    prefix_probability: 0.45
-    suffix_probability: 0.25
-    # Address terms compose with anything, including questions
-    address: ["hey marvin", "marvin", "okay marvin", "hey", "olly", "hey olly"]
-    # Request forms only compose with imperatives. "can you what time is it"
-    # is not English, so intents marked imperative: false skip these.
-    request: ["can you", "could you", "please", "would you", "i want you to",
-              "i need you to", "i would like you to", "can you please",
-              "could you please"]
-    suffixes: ["please", "for me", "thanks", "thank you", "will you"]
-
-  verbalize_numbers: true    # 15 -> "fifteen", 40 -> "forty"
-  pluralize_units: true      # number == 1 -> singular: "one minute", not "minutes"
-                             # {unit:singular} forces it regardless of number
-  article_agreement: true    # "an eighteen minute timer", not "a eighteen".
-                             # Vowel-initial spoken numbers are 8, 11, 18 (and
-                             # 80-89 if the range ever grows). "one" is the
-                             # exception - it sounds like "wun", so "a one".
-  balance_per_intent: true   # timer.set has ~792 unique sentences vs 9 for
-                             # query.info - sample, do not take the full product
-  target_utterances: 25000
-  voices: 30                 # piper english voices
-
-  augment:
-    noise_snr_db: [20, 15, 10, 5, 0]
-    reverb: true
-    speed: [0.9, 1.0, 1.1]
-    gain_db: [-6, 0, 6]
-
-# ---------------------------------------------------------------------------
-# Splits - speaker-disjoint, no exceptions.
-#
-# A speaker (TTS voice or human) appears in exactly ONE split. If the same
-# voice is in train and test, the test score measures memorisation of that
-# voice, not generalisation, and the number is worthless. This is the single
-# easiest way to accidentally invalidate the whole evaluation, so it is
-# specified here rather than left to the training script.
-# ---------------------------------------------------------------------------
-splits:
-  policy: speaker_disjoint
-
-  rules:
-    # Split FIRST, augment SECOND. Augmenting before the split puts noisy
-    # copies of the same utterance on both sides of it.
-    - augment_after_split: true
-    # Same argument for the noise and reverb pools: training on the same
-    # noise clips you test with measures noise memorisation.
-    - partition_noise_pool: true
-    - partition_rir_pool: true
-    # The headline number comes from human speech the model has never heard.
-    - headline_eval: test_human
-
-  # Partition SPEAKERS, not voice models. Several Piper models are
-  # multi-speaker (libritts 904, vctk 109, l2arctic 24), so model-level
-  # splitting would put 904 speakers on one side of the line. 1070 speakers
-  # are available locally; 137 held-out speakers is a far stronger
-  # unseen-speaker measurement than a handful of held-out models.
-  tts_speakers:
-    seed: 231                  # fixed so the split is reproducible and shareable
-    train_fraction: 0.70
-    val_fraction: 0.10
-    test_fraction: 0.20
-
-    # Stratify within each source model. A naive random split of 1070 speakers
-    # would land ~85% libritts in every split and could leave test with no
-    # non-native speakers at all.
-    stratify_by: source_model
-
-    # l2arctic is 24 of 1070 speakers (2%) but represents every non-native
-    # accent we have. The people who will actually test the demo are L2 English
-    # speakers, so weight it far above its natural share during training.
-    oversample:
-      en_US-l2arctic-medium: 8.0
-      en_GB-aru-medium: 2.0
-      en_US-arctic-medium: 2.0
-
-    # Single-speaker models have higher per-voice fidelity than multi-speaker
-    # ones (measured: spectral centroid 1549-1745 Hz vs 873-1617 Hz for vctk).
-    # Keep them in train for quality; they are too few to spend on test.
-    single_voice_models_to_train: true
-
-  # Human recordings are scarce and therefore precious - most of them are
-  # worth more as evaluation than as training data. But synth-only training
-  # leaves a measurable gap on real speech, and a small amount of real audio
-  # closes most of it, so a minority slice goes to train.
-  human_speakers:
-    train_fraction: 0.25
-    test_fraction: 0.75
-    min_speakers_total: 8
-    utterances_per_speaker: 100   # ~20 per intent, slot values varied
-
-# ---------------------------------------------------------------------------
-# Evaluation sets. Each one isolates a single question.
-# ---------------------------------------------------------------------------
-eval_sets:
-
-  dev_synth:
-    speakers: tts_voices.dev
-    condition: clean
-    purpose: in-loop model selection only, never reported as a result
-
-  test_synth:
-    speakers: tts_voices.test
-    condition: augmented
-    purpose: upper bound - unseen synthetic voices
-
-  test_human:
-    speakers: human_speakers.test
-    condition: clean
-    purpose: HEADLINE - unseen real speakers
-    metric: exact_command_accuracy
-
-  test_human_noisy:
-    speakers: human_speakers.test
-    condition: snr_sweep     # see generation.augment.noise_snr_db
-    purpose: robustness curve, accuracy vs SNR
-
-  test_negatives:
-    speakers: out_of_domain   # Common Voice / LibriSpeech, speaker-disjoint
-    condition: augmented
-    purpose: false-accept rate per hour at the deployed threshold
-    metric: false_accept_rate
-
-# The gap (test_synth - test_human) is the synth-to-real domain gap. Report it
-# explicitly - it is a legitimate finding, not a failure to hide.
+    schema: ["play music", "start music", "play some music"]
+  WEATHER:
+    slots: []
+    schema: ["weather", "what's the weather", "tell me the weather"]
+  TIME:
+    slots: []
+    schema: ["time", "what time is it", "tell me the time"]
+  LIGHT_ON:
+    slots: []
+    schema: ["lights on", "power on the lights", "turn on the lights"]
+  LIGHT_OFF:
+    slots: []
+    schema: ["lights out", "kill the lights", "shut off the lights"]
+  PAUSE:
+    slots: []
+    schema: ["pause", "pause audio", "pause song"]
+  STOP:
+    slots: []
+    schema: ["stop", "stop playing", "end playback"]
+  NEXT:
+    slots: []
+    schema: ["next song", "skip song", "play next song"]
+  VOLUME_UP:
+    slots: []
+    schema: ["volume up", "increase the volume", "turn the volume up"]
+  VOLUME_DOWN:
+    slots: []
+    schema: ["volume down", "lower the volume", "turn the volume down"]
+  CALL:
+    slots: []
+    schema: ["call", "make a call", "make a phone call"]
+  MESSAGE:
+    slots: []
+    schema: ["message", "send a message", "send my message"]
+  LIST_REMINDERS:
+    slots: []
+    schema: ["reminders", "show my reminders", "list my reminders"]
+  TIMER:
+    slots: [duration]
+    schema: ["timer {duration}", "countdown for {duration}", "start a timer for {duration}"]
+  ALARM:
+    slots: [time]
+    schema: ["alarm {time}", "wake me up at {time}", "set an alarm for {time}"]
+  TEMPERATURE:
+    slots: [degrees]
+    schema: ["temperature {degrees}", "change the temperature to {degrees}", "set the temperature to {degrees}"]
+  BRIGHTNESS:
+    slots: [percent]
+    schema: ["brightness {percent}", "adjust brightness to {percent}", "brightness level {percent}"]
+  COLOR:
+    slots: [color]
+    schema: ["change color to {color}", "switch color to {color}", "set color to {color}"]
+  CREATE_REMINDER:
+    slots: [task]
+    schema: ["reminder {task}", "remind me to {task}", "create a reminder to {task}"]
+  none:
+    slots: []

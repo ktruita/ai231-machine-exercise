@@ -33,6 +33,12 @@ me1/requirements.txt
 me2/data/
 me2/RIRS_NOISES/
 
+# The class dataset (fetch_class_dataset.py) and the validation packs cut from
+# it: FSC is non-commercial and the group recordings need consent
+me2/class_data/
+me2/vcm_demo/validation*/
+me2/vcm_demo_*.tar.gz
+
 # ME2 run artifacts
 me2/outputs/
 me2/lightning_logs/

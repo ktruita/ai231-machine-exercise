@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from vcm.spec import load_command_spec, build_label_space, active_slots, digit_slots
 
 
-# Manifests written by generate_dataset.py and generate_negatives.py
+# Manifests written by add_class_dataset.py and build_hf_only.py
 MANIFEST_TEMPLATE = "manifest_{split}.jsonl"
 
 INT16_SCALE = 32768.0
@@ -86,20 +86,18 @@ class VoiceCommandDataset(Dataset):
         Args:
             data_dir: Directory holding the split folders and manifests
             spec_path: Path to commands.yaml
-            split: Which manifest to read, 'train', 'val' or 'test' (default: 'train')
+            split: Which manifest to read, e.g. 'c_train', 'c_val' or 'c_test' (default: 'train')
             random_offset: Randomise where a short clip sits in the fixed window (default: False)
             augment: Callable applied to the waveform, or None for clean audio. Applied
                 to every class alike - augmenting only commands would give the model a
                 channel cue that separates them from the reject class (default: None)
-            exclude_negative_models: Sources whose `none` rows are dropped. Real speech
-                arrived as 6,620 negatives against 477 commands, and that 14:1 skew
-                taught the model to lean toward rejecting anything that sounds like a
-                real recording. With a wake word gating the input, the command model
-                never sees ambient speech and does not need to reject it (default: ())
+            exclude_negative_models: Sources whose `none` rows are dropped. Negatives
+                that far outnumber a source's commands teach the model to reject
+                anything that sounds like that source; with a wake word gating the
+                input, the command model never hears ambient speech (default: ())
             repeat_sources: How many times to count rows from each source, e.g.
-                {"slurp": 3}. Real conversational speech is outnumbered roughly
-                three to one by synthetic templates, so without this the model
-                optimises mostly for the phrasing it will not meet (default: None)
+                {"real_voice": 3}, so a scarce kind of recording is not drowned
+                out by a plentiful one (default: None)
         """
         self.data_dir = Path(data_dir)
         self.spec = load_command_spec(spec_path)
@@ -117,11 +115,9 @@ class VoiceCommandDataset(Dataset):
             ]
 
         if repeat_sources:
-            # A key is either a source, "slurp", or a source and intent,
-            # "timers_and_such:timer.set". The narrower form exists because
-            # Timers and Such is 146 timer commands against 1,095 negatives:
-            # repeating the source to get more command prosody would repeat the
-            # negatives eight times over with it.
+            # A key is either a source, "real_voice", or a source and intent,
+            # "real_voice:TIMER", so a source's commands can be repeated
+            # without repeating its negatives with them.
             def repeats(record: dict) -> int:
                 pair = f"{record['model']}:{record['intent']}"
                 return repeat_sources.get(pair, repeat_sources.get(record["model"], 1))
@@ -163,9 +159,8 @@ class VoiceCommandDataset(Dataset):
         """
         Slots a record supervises beyond the ones its intent uses.
 
-        Mined LibriSpeech carries a real spoken number on a `none` utterance:
-        the intent head learns to reject it, the number head learns what the
-        word sounds like out of a human mouth rather than out of Piper.
+        A `none` utterance can still say a slot's value, and grading that slot
+        head on it teaches the value without teaching a command.
 
         Named at spec level in the manifest and expanded to head names here, so
         the manifest never has to know a slot is split across two heads.
@@ -178,6 +173,29 @@ class VoiceCommandDataset(Dataset):
         """
         names = set()
         for slot in record.get("supervise", ()):
+            parts = [head for head, (base, _) in self.digit_source.items() if base == slot]
+            names.update(parts or [slot])
+
+        return names
+
+    def expand_unsupervised(self, record: dict) -> set[str]:
+        """
+        Slots a record's intent uses but whose value it cannot give.
+
+        A recording can carry a command whose value lies outside a closed slot -
+        an alarm at seven, against a schema that lists six, eight and nine. Its
+        label is still right, so it trains the intent head; the slot head is
+        left ungraded rather than taught a wrong value. add_class_dataset.py
+        marks these rows; named at spec level, like `supervise`.
+
+        Args:
+            record: Manifest record, optionally carrying an `unsupervise` list
+
+        Returns:
+            Head names to leave ungraded for this record
+        """
+        names = set()
+        for slot in record.get("unsupervise", ()):
             parts = [head for head, (base, _) in self.digit_source.items() if base == slot]
             names.update(parts or [slot])
 
@@ -201,7 +219,8 @@ class VoiceCommandDataset(Dataset):
             waveform = self.augment(waveform)
 
         intent_name = record["intent"]
-        used = set(self.intent_slots[intent_name]) | self.expand_supervised(record)
+        used = (set(self.intent_slots[intent_name]) | self.expand_supervised(record)) \
+            - self.expand_unsupervised(record)
 
         # Slots the intent does not use are labelled N/A and masked out, so the
         # naive and masked loss runs read the same batch
@@ -218,10 +237,8 @@ class VoiceCommandDataset(Dataset):
             targets[name] = torch.tensor(self.slot_index[name][value], dtype=torch.long)
             mask[name] = torch.tensor(name in used, dtype=torch.bool)
 
-        # Mined prose is genuinely `none`, but it outnumbers the real timer
-        # commands 22 to 1, and grading the intent head on it taught the model
-        # that a number in a human voice means reject. It is here to teach the
-        # number heads; rejection is already covered by 20,000 other negatives.
+        # A row marked supervise_intent: false trains only the slot heads it
+        # supervises, and is left out of the intent loss
         item = {
             "waveform": torch.from_numpy(waveform),
             "intent": torch.tensor(self.intent_index[intent_name], dtype=torch.long),

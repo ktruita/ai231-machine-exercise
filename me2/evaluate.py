@@ -4,14 +4,19 @@ Reports exact command accuracy - the intent and every slot that intent uses,
 all correct at once - because that is what the device actually has to get
 right. Intent-only accuracy flatters: five heads at 0.95 each is 0.77 overall.
 
-Results are split by whether the audio is real human speech or Piper, since
-the training commands are synthetic and the real subset is the only honest
+Results are split by whether the audio is a recording of a person or
+synthetic - text-to-speech and voice clones, the manifest's is_synthetic -
+since most of the class dataset is synthetic and the real subset is the honest
 read on how the model behaves in front of a person.
 
 The loaded checkpoint is printed on every run. An earlier round of results was
 wrong for a week because a glob sorted alphabetically and quietly returned
 step_8000 in preference to step_16000; --step exists so a checkpoint can be
 pinned rather than inferred.
+
+Usage:
+    python evaluate.py modelstore/vcm_hf --step 8000
+    python evaluate.py modelstore/vcm_hf_s2 --step 7500 --split c_val
 """
 import argparse
 import collections
@@ -25,13 +30,6 @@ from torch.utils.data import DataLoader
 
 from dataloaders.vcm_dataloader import VoiceCommandDataset
 from utils import find_latest_checkpoint
-
-# Sources that are recordings of people rather than text-to-speech
-REAL_MODELS = {"slurp", "speech_commands", "timers_and_such"}
-
-# Mined number words are real speech too, but they are held out of the `real`
-# subset so the headline stays comparable with the runs that predate them
-NUMBER_SLICE = "librispeech_num"
 
 
 def load_run(run_dir: str | Path, step: int | None = None, device: str = "cpu"):
@@ -48,6 +46,10 @@ def load_run(run_dir: str | Path, step: int | None = None, device: str = "cpu"):
     """
     run_dir = Path(run_dir)
     cfg = OmegaConf.load(run_dir / "config.yaml")
+    # main.py saves the spec a run was trained against beside it; reading that
+    # copy means a renamed or edited spec in the repo cannot change the labels
+    if (run_dir / "commands.yaml").exists():
+        cfg.module.spec_path = str(run_dir / "commands.yaml")
     OmegaConf.resolve(cfg.module)
 
     if step is None:
@@ -78,9 +80,11 @@ def spec_slots(module, intent: str) -> list[str]:
     """
     digits = module.backbone.digit_slots
     parts = {name for pair in digits.values() for name in pair}
+    # A label the model was never given (a test set from a wider spec) has no slots to read
+    slots = module.backbone.intent_slots.get(intent, [])
 
-    used = [name for name in module.backbone.intent_slots[intent] if name not in parts]
-    used += [base for base, pair in digits.items() if pair[0] in module.backbone.intent_slots[intent]]
+    used = [name for name in slots if name not in parts]
+    used += [base for base, pair in digits.items() if pair[0] in slots]
 
     return used
 
@@ -96,10 +100,10 @@ def evaluate(module, dataset, batch_size: int = 128, device: str = "cpu") -> lis
         device: Device to run on (default: 'cpu')
 
     Returns:
-        One row per record holding the truth, the prediction and the source
+        One row per record holding the truth, the prediction, the source and
+        whether the audio is synthetic
     """
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-    digits = dataset.digit_source
 
     rows = []
     with torch.no_grad():
@@ -107,28 +111,21 @@ def evaluate(module, dataset, batch_size: int = 128, device: str = "cpu") -> lis
             logits = module(batch["waveform"].to(device))
             commands = module.backbone.decode(logits)
 
-            # The number heads are also read straight, ignoring the intent, so a
-            # mined `none` utterance carrying a real spoken number can be scored
-            heads = {
-                name: [dataset.slot_classes[name][i] for i in logits[name].argmax(dim=-1).tolist()]
-                for name in digits
-            }
-
-            for i, command in enumerate(commands):
+            for command in commands:
                 record = dataset.records[len(rows)]
+                # A slot the row cannot give a value for is not graded, as in training
                 truth = {"intent": record["intent"]}
                 truth.update({
                     name: record["slots"].get(name)
                     for name in spec_slots(module, record["intent"])
+                    if name not in record.get("unsupervise", ())
                 })
 
                 rows.append({
                     "model": record.get("model", "?"),
+                    "synthetic": bool(record.get("is_synthetic", 0)),
                     "truth": truth,
                     "pred": command,
-                    "supervised": record.get("supervise", []),
-                    "slots": record["slots"],
-                    "heads": {name: values[i] for name, values in heads.items()},
                 })
 
     return rows
@@ -216,60 +213,13 @@ def slot_errors(rows: list[dict], slot: str) -> collections.Counter:
     return counts
 
 
-def number_accuracy(rows: list[dict], digits: dict) -> dict:
-    """
-    Score the number heads on utterances that supervise them directly.
-
-    Mined LibriSpeech is labelled `none`, so decode never reports its number.
-    Reading the heads regardless of intent is the only way to see whether the
-    model learned what a real human "fifteen" sounds like.
-
-    Args:
-        rows: Output of evaluate
-        digits: Dataset's digit_source map, head name to (base slot, divisor)
-
-    Returns:
-        Overall accuracy plus a per-value breakdown of the worst offenders
-    """
-    per_value = collections.defaultdict(lambda: [0, 0])
-    confusions = collections.Counter()
-
-    for row in rows:
-        if "number" not in row["supervised"]:
-            continue
-
-        truth = row["slots"]["number"]
-        predicted = {}
-        for head, (_, divisor) in digits.items():
-            value = row["heads"][head]
-            predicted[divisor] = None if value == "N/A" else value
-
-        got = None if None in predicted.values() else predicted[10] * 10 + predicted[1]
-        per_value[truth][1] += 1
-        per_value[truth][0] += got == truth
-
-        if got != truth:
-            confusions[(truth, got)] += 1
-
-    total = sum(count for _, count in per_value.values())
-    correct = sum(hit for hit, _ in per_value.values())
-
-    return {
-        "n": total,
-        "accuracy": correct / max(total, 1),
-        "per_value": {k: v[0] / v[1] for k, v in sorted(per_value.items())},
-        "worst": confusions.most_common(6),
-    }
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("runs", nargs="+", help="run directories under modelstore/")
-    ap.add_argument("--split", default="test")
+    ap.add_argument("--split", default="c_test")
     ap.add_argument("--step", type=int, default=None, help="pin a checkpoint step")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--batch-size", type=int, default=128)
-    ap.add_argument("--errors", nargs="*", default=["room", "number"])
     args = ap.parse_args()
 
     for run in args.runs:
@@ -290,34 +240,21 @@ def main():
             augment=None,
         )
         rows = evaluate(module, dataset, args.batch_size, args.device)
-
-        mined = [r for r in rows if r["model"] == NUMBER_SLICE]
-        scored = [r for r in rows if r["model"] != NUMBER_SLICE]
-        real = [r for r in scored if r["model"] in REAL_MODELS]
-        synth = [r for r in scored if r["model"] not in REAL_MODELS]
+        real = [r for r in rows if not r["synthetic"]]
+        synth = [r for r in rows if r["synthetic"]]
 
         print(f"\n=== {Path(run).name}   {ckpt_path.name}")
         print(f"{'subset':10s} {'n':>6s} {'intent':>8s} {'exact':>8s} {'none':>8s}")
-        for label, subset in (("all", scored), ("real", real), ("synthetic", synth)):
+        for label, subset in (("all", rows), ("real", real), ("synthetic", synth)):
             s = summarise(subset)
             print(f"{label:10s} {s['n']:6d} {s['intent']:8.3f} {s['exact']:8.3f} {s['none_recall']:8.3f}")
 
-        print("  slots (real):", "  ".join(
-            f"{k}={v:.3f}" for k, v in summarise(real)["slots"].items()
-        ))
-        for slot in args.errors:
+        slots = summarise(real)["slots"]
+        print("  slots (real):", "  ".join(f"{k}={v:.3f}" for k, v in slots.items()))
+        for slot in slots:
             counts = slot_errors(real, slot)
             if counts:
                 print(f"  {slot:8s} errors (real):", dict(counts))
-
-        if mined:
-            numbers = number_accuracy(mined, dataset.digit_source)
-            print(f"\n  held-out real number words: {numbers['n']} utterances, "
-                  f"accuracy {numbers['accuracy']:.3f}")
-            print("   ", "  ".join(f"{k}={v:.2f}" for k, v in numbers["per_value"].items()))
-            if numbers["worst"]:
-                print("    worst:", "  ".join(f"{t}->{g}:{c}" for (t, g), c in numbers["worst"]))
-            print(f"    rejected as none: {summarise(mined)['none_recall']:.3f}")
 
 
 if __name__ == "__main__":
