@@ -1,0 +1,14 @@
+pipecat-ai[mcp,silero,openrouter,local,websocket]==1.15.0
+mcp>=2.1.1,<3
+httpx
+edge-tts
+miniaudio
+openpyxl
+pyyaml
+python-dotenv
+pytest
+pytest-asyncio
+anyio
+# class benchmark launcher (fd-benchmark): websocket transport + Pi machine stats
+websockets
+psutil

@@ -1,0 +1,110 @@
+{"id": "PLAY_MUSIC-v1", "kind": "intent", "text": "Play music", "intent": "PLAY_MUSIC", "slots": {}}
+{"id": "PLAY_MUSIC-v2", "kind": "intent", "text": "Start music", "intent": "PLAY_MUSIC", "slots": {}}
+{"id": "PLAY_MUSIC-v3", "kind": "intent", "text": "Play some music", "intent": "PLAY_MUSIC", "slots": {}}
+{"id": "WEATHER-v1", "kind": "intent", "text": "Weather", "intent": "WEATHER", "slots": {}}
+{"id": "WEATHER-v2", "kind": "intent", "text": "What's the weather?", "intent": "WEATHER", "slots": {}}
+{"id": "WEATHER-v3", "kind": "intent", "text": "Tell me the weather", "intent": "WEATHER", "slots": {}}
+{"id": "TIME-v1", "kind": "intent", "text": "Time", "intent": "TIME", "slots": {}}
+{"id": "TIME-v2", "kind": "intent", "text": "What time is it?", "intent": "TIME", "slots": {}}
+{"id": "TIME-v3", "kind": "intent", "text": "Tell me the time", "intent": "TIME", "slots": {}}
+{"id": "LIGHT_ON-v1", "kind": "intent", "text": "Lights on", "intent": "LIGHT_ON", "slots": {}}
+{"id": "LIGHT_ON-v2", "kind": "intent", "text": "Power on the lights", "intent": "LIGHT_ON", "slots": {}}
+{"id": "LIGHT_ON-v3", "kind": "intent", "text": "Turn on the lights", "intent": "LIGHT_ON", "slots": {}}
+{"id": "LIGHT_OFF-v1", "kind": "intent", "text": "Lights out", "intent": "LIGHT_OFF", "slots": {}}
+{"id": "LIGHT_OFF-v2", "kind": "intent", "text": "Kill the lights", "intent": "LIGHT_OFF", "slots": {}}
+{"id": "LIGHT_OFF-v3", "kind": "intent", "text": "Shut off the lights", "intent": "LIGHT_OFF", "slots": {}}
+{"id": "PAUSE-v1", "kind": "intent", "text": "Pause", "intent": "PAUSE", "slots": {}}
+{"id": "PAUSE-v2", "kind": "intent", "text": "Pause audio", "intent": "PAUSE", "slots": {}}
+{"id": "PAUSE-v3", "kind": "intent", "text": "Pause song", "intent": "PAUSE", "slots": {}}
+{"id": "STOP-v1", "kind": "intent", "text": "Stop", "intent": "STOP", "slots": {}}
+{"id": "STOP-v2", "kind": "intent", "text": "Stop playing", "intent": "STOP", "slots": {}}
+{"id": "STOP-v3", "kind": "intent", "text": "End playback", "intent": "STOP", "slots": {}}
+{"id": "NEXT-v1", "kind": "intent", "text": "Next song", "intent": "NEXT", "slots": {}}
+{"id": "NEXT-v2", "kind": "intent", "text": "Skip song", "intent": "NEXT", "slots": {}}
+{"id": "NEXT-v3", "kind": "intent", "text": "Play next song", "intent": "NEXT", "slots": {}}
+{"id": "VOLUME_UP-v1", "kind": "intent", "text": "Volume up", "intent": "VOLUME_UP", "slots": {}}
+{"id": "VOLUME_UP-v2", "kind": "intent", "text": "Increase the volume", "intent": "VOLUME_UP", "slots": {}}
+{"id": "VOLUME_UP-v3", "kind": "intent", "text": "Turn the volume up", "intent": "VOLUME_UP", "slots": {}}
+{"id": "VOLUME_DOWN-v1", "kind": "intent", "text": "Volume down", "intent": "VOLUME_DOWN", "slots": {}}
+{"id": "VOLUME_DOWN-v2", "kind": "intent", "text": "Lower the volume", "intent": "VOLUME_DOWN", "slots": {}}
+{"id": "VOLUME_DOWN-v3", "kind": "intent", "text": "Turn the volume down", "intent": "VOLUME_DOWN", "slots": {}}
+{"id": "CALL-v1", "kind": "intent", "text": "Call", "intent": "CALL", "slots": {}}
+{"id": "CALL-v2", "kind": "intent", "text": "Make a call", "intent": "CALL", "slots": {}}
+{"id": "CALL-v3", "kind": "intent", "text": "Make a phone call", "intent": "CALL", "slots": {}}
+{"id": "MESSAGE-v1", "kind": "intent", "text": "Message", "intent": "MESSAGE", "slots": {}}
+{"id": "MESSAGE-v2", "kind": "intent", "text": "Send a message", "intent": "MESSAGE", "slots": {}}
+{"id": "MESSAGE-v3", "kind": "intent", "text": "Send my message", "intent": "MESSAGE", "slots": {}}
+{"id": "LIST_REMINDERS-v1", "kind": "intent", "text": "Reminders", "intent": "LIST_REMINDERS", "slots": {}}
+{"id": "LIST_REMINDERS-v2", "kind": "intent", "text": "Show my reminders", "intent": "LIST_REMINDERS", "slots": {}}
+{"id": "LIST_REMINDERS-v3", "kind": "intent", "text": "List my reminders", "intent": "LIST_REMINDERS", "slots": {}}
+{"id": "TIMER-v1-x1", "kind": "intent", "text": "Timer 10 seconds", "intent": "TIMER", "slots": {"duration_seconds": 10}}
+{"id": "TIMER-v1-x2", "kind": "intent", "text": "Timer 30 seconds", "intent": "TIMER", "slots": {"duration_seconds": 30}}
+{"id": "TIMER-v1-x3", "kind": "intent", "text": "Timer 1 minute", "intent": "TIMER", "slots": {"duration_seconds": 60}}
+{"id": "TIMER-v2-x1", "kind": "intent", "text": "Countdown for 10 seconds", "intent": "TIMER", "slots": {"duration_seconds": 10}}
+{"id": "TIMER-v2-x2", "kind": "intent", "text": "Countdown for 30 seconds", "intent": "TIMER", "slots": {"duration_seconds": 30}}
+{"id": "TIMER-v2-x3", "kind": "intent", "text": "Countdown for 1 minute", "intent": "TIMER", "slots": {"duration_seconds": 60}}
+{"id": "TIMER-v3-x1", "kind": "intent", "text": "Start a timer for 10 seconds", "intent": "TIMER", "slots": {"duration_seconds": 10}}
+{"id": "TIMER-v3-x2", "kind": "intent", "text": "Start a timer for 30 seconds", "intent": "TIMER", "slots": {"duration_seconds": 30}}
+{"id": "TIMER-v3-x3", "kind": "intent", "text": "Start a timer for 1 minute", "intent": "TIMER", "slots": {"duration_seconds": 60}}
+{"id": "ALARM-v1-x1", "kind": "intent", "text": "Alarm 6 AM", "intent": "ALARM", "slots": {"time": "06:00"}}
+{"id": "ALARM-v1-x2", "kind": "intent", "text": "Alarm 8 AM", "intent": "ALARM", "slots": {"time": "08:00"}}
+{"id": "ALARM-v1-x3", "kind": "intent", "text": "Alarm 9 PM", "intent": "ALARM", "slots": {"time": "21:00"}}
+{"id": "ALARM-v2-x1", "kind": "intent", "text": "Wake me up at 6 AM", "intent": "ALARM", "slots": {"time": "06:00"}}
+{"id": "ALARM-v2-x2", "kind": "intent", "text": "Wake me up at 8 AM", "intent": "ALARM", "slots": {"time": "08:00"}}
+{"id": "ALARM-v2-x3", "kind": "intent", "text": "Wake me up at 9 PM", "intent": "ALARM", "slots": {"time": "21:00"}}
+{"id": "ALARM-v3-x1", "kind": "intent", "text": "Set an alarm for 6 AM", "intent": "ALARM", "slots": {"time": "06:00"}}
+{"id": "ALARM-v3-x2", "kind": "intent", "text": "Set an alarm for 8 AM", "intent": "ALARM", "slots": {"time": "08:00"}}
+{"id": "ALARM-v3-x3", "kind": "intent", "text": "Set an alarm for 9 PM", "intent": "ALARM", "slots": {"time": "21:00"}}
+{"id": "TEMPERATURE-v1-x1", "kind": "intent", "text": "Temperature 18 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 18}}
+{"id": "TEMPERATURE-v1-x2", "kind": "intent", "text": "Temperature 22 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 22}}
+{"id": "TEMPERATURE-v1-x3", "kind": "intent", "text": "Temperature 26 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 26}}
+{"id": "TEMPERATURE-v2-x1", "kind": "intent", "text": "Change the temperature to 18 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 18}}
+{"id": "TEMPERATURE-v2-x2", "kind": "intent", "text": "Change the temperature to 22 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 22}}
+{"id": "TEMPERATURE-v2-x3", "kind": "intent", "text": "Change the temperature to 26 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 26}}
+{"id": "TEMPERATURE-v3-x1", "kind": "intent", "text": "Set the temperature to 18 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 18}}
+{"id": "TEMPERATURE-v3-x2", "kind": "intent", "text": "Set the temperature to 22 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 22}}
+{"id": "TEMPERATURE-v3-x3", "kind": "intent", "text": "Set the temperature to 26 degrees", "intent": "TEMPERATURE", "slots": {"degrees": 26}}
+{"id": "BRIGHTNESS-v1-x1", "kind": "intent", "text": "Brightness 20 percent", "intent": "BRIGHTNESS", "slots": {"percent": 20}}
+{"id": "BRIGHTNESS-v1-x2", "kind": "intent", "text": "Brightness 60 percent", "intent": "BRIGHTNESS", "slots": {"percent": 60}}
+{"id": "BRIGHTNESS-v1-x3", "kind": "intent", "text": "Brightness 100 percent", "intent": "BRIGHTNESS", "slots": {"percent": 100}}
+{"id": "BRIGHTNESS-v2-x1", "kind": "intent", "text": "Adjust brightness to 20 percent", "intent": "BRIGHTNESS", "slots": {"percent": 20}}
+{"id": "BRIGHTNESS-v2-x2", "kind": "intent", "text": "Adjust brightness to 60 percent", "intent": "BRIGHTNESS", "slots": {"percent": 60}}
+{"id": "BRIGHTNESS-v2-x3", "kind": "intent", "text": "Adjust brightness to 100 percent", "intent": "BRIGHTNESS", "slots": {"percent": 100}}
+{"id": "BRIGHTNESS-v3-x1", "kind": "intent", "text": "Brightness level 20 percent", "intent": "BRIGHTNESS", "slots": {"percent": 20}}
+{"id": "BRIGHTNESS-v3-x2", "kind": "intent", "text": "Brightness level 60 percent", "intent": "BRIGHTNESS", "slots": {"percent": 60}}
+{"id": "BRIGHTNESS-v3-x3", "kind": "intent", "text": "Brightness level 100 percent", "intent": "BRIGHTNESS", "slots": {"percent": 100}}
+{"id": "COLOR-v1-x1", "kind": "intent", "text": "Change color to red", "intent": "COLOR", "slots": {"color": "red"}}
+{"id": "COLOR-v1-x2", "kind": "intent", "text": "Change color to blue", "intent": "COLOR", "slots": {"color": "blue"}}
+{"id": "COLOR-v1-x3", "kind": "intent", "text": "Change color to green", "intent": "COLOR", "slots": {"color": "green"}}
+{"id": "COLOR-v2-x1", "kind": "intent", "text": "Switch color to red", "intent": "COLOR", "slots": {"color": "red"}}
+{"id": "COLOR-v2-x2", "kind": "intent", "text": "Switch color to blue", "intent": "COLOR", "slots": {"color": "blue"}}
+{"id": "COLOR-v2-x3", "kind": "intent", "text": "Switch color to green", "intent": "COLOR", "slots": {"color": "green"}}
+{"id": "COLOR-v3-x1", "kind": "intent", "text": "Set color to red", "intent": "COLOR", "slots": {"color": "red"}}
+{"id": "COLOR-v3-x2", "kind": "intent", "text": "Set color to blue", "intent": "COLOR", "slots": {"color": "blue"}}
+{"id": "COLOR-v3-x3", "kind": "intent", "text": "Set color to green", "intent": "COLOR", "slots": {"color": "green"}}
+{"id": "CREATE_REMINDER-v1-x1", "kind": "intent", "text": "Reminder drink water", "intent": "CREATE_REMINDER", "slots": {"task": "drink water"}}
+{"id": "CREATE_REMINDER-v1-x2", "kind": "intent", "text": "Reminder study", "intent": "CREATE_REMINDER", "slots": {"task": "study"}}
+{"id": "CREATE_REMINDER-v1-x3", "kind": "intent", "text": "Reminder exercise", "intent": "CREATE_REMINDER", "slots": {"task": "exercise"}}
+{"id": "CREATE_REMINDER-v2-x1", "kind": "intent", "text": "Remind me to drink water", "intent": "CREATE_REMINDER", "slots": {"task": "drink water"}}
+{"id": "CREATE_REMINDER-v2-x2", "kind": "intent", "text": "Remind me to study", "intent": "CREATE_REMINDER", "slots": {"task": "study"}}
+{"id": "CREATE_REMINDER-v2-x3", "kind": "intent", "text": "Remind me to exercise", "intent": "CREATE_REMINDER", "slots": {"task": "exercise"}}
+{"id": "CREATE_REMINDER-v3-x1", "kind": "intent", "text": "Create a reminder to drink water", "intent": "CREATE_REMINDER", "slots": {"task": "drink water"}}
+{"id": "CREATE_REMINDER-v3-x2", "kind": "intent", "text": "Create a reminder to study", "intent": "CREATE_REMINDER", "slots": {"task": "study"}}
+{"id": "CREATE_REMINDER-v3-x3", "kind": "intent", "text": "Create a reminder to exercise", "intent": "CREATE_REMINDER", "slots": {"task": "exercise"}}
+{"id": "DELEGATE-website", "kind": "delegate", "text": "Can you make me a simple one page website about my dog Max? He's a golden retriever who loves the beach."}
+{"id": "DELEGATE-report", "kind": "delegate", "text": "Write me a short report comparing three cheap ways to learn Japanese and save it as a file."}
+{"id": "DELEGATE-script", "kind": "delegate", "text": "Write a Python script that renames all the photos in a folder by the date they were taken."}
+{"id": "CHAT-while-busy", "kind": "intent", "text": "While that's going, what's the weather like?", "intent": "WEATHER", "slots": {}}
+{"id": "BC-mhm", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "Mhm.", "expect": "continue"}
+{"id": "BC-yeah", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "Yeah.", "expect": "continue"}
+{"id": "BC-okay", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "Okay.", "expect": "continue"}
+{"id": "BC-uhhuh", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "Uh huh.", "expect": "continue"}
+{"id": "STEER-stop", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "Wait, stop. Actually, what time is it?", "expect": "interrupt"}
+{"id": "STEER-change", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "Hold on, can you turn off the lights first?", "expect": "interrupt"}
+{"id": "STEER-short", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "No, stop.", "expect": "interrupt"}
+{"id": "STEER-question", "kind": "overlap", "setup": "Tell me a short story about a cat who learns to fly.", "overlay": "Sorry, what was the cat's name?", "expect": "interrupt"}
+{"id": "ADDR-hey", "kind": "address", "text": "Hey.", "expect_reply": "Yes?"}
+{"id": "ADDR-there", "kind": "address", "text": "Are you there?", "expect_reply": "Yes?"}
+{"id": "TRAIL-and", "kind": "trailing", "text": "I was thinking about tomorrow and", "followup": "set an alarm for 6 AM.", "expect_reply": "Mhm?", "intent": "ALARM", "slots": {"time": "06:00"}}
+{"id": "MEM-tell", "kind": "chat", "text": "By the way, my sister's name is Ana."}
+{"id": "MEM-ask", "kind": "chat", "text": "What's my sister's name?", "expect_contains": "Ana"}

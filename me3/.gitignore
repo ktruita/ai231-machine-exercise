@@ -1,0 +1,9 @@
+.venv/
+.env
+data/
+workspaces/
+benchmark/results/
+benchmark/bank/audio/
+__pycache__/
+*.Zone.Identifier
+fd-benchmark/

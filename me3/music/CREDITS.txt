@@ -1,0 +1,17 @@
+Demo music: instrumental recordings, free to use (public domain / CC0), from Wikimedia Commons.
+Licenses were read on each file page on 2026-11-07.
+
+Satie - Gymnopedie No 1.ogg
+  Erik Satie, Gymnopedie No. 1 (lent et douloureux), performed by Robin Alciatore (Musopen)
+  License: public domain ("released into the public domain by its author, Robin Alciatore")
+  https://commons.wikimedia.org/wiki/File:Erik_Satie_-_gymnopedies_-_la_1_ere._lent_et_douloureux.ogg
+
+Chopin - Nocturne Op 9 No 2.ogg
+  Frederic Chopin, Nocturne No. 2 in E-flat major, Op. 9, performed by Peter Johnston
+  License: CC0 1.0 Universal Public Domain Dedication
+  https://commons.wikimedia.org/wiki/File:Chopin_Nocturne_No._2_in_E_Flat_Major,_Op._9.ogg
+
+Bach - Prelude in B minor.ogg
+  J. S. Bach, arr. Alexander Siloti, Prelude in B minor (after BWV 855a), performed by Felipe Sarro
+  License: CC0 1.0 Universal Public Domain Dedication
+  https://commons.wikimedia.org/wiki/File:Bach-Siloti,_Prelude_in_B_minor_(J._S._Bach,_arranged_Siloti),_arrangement_of_Prelude_in_E_minor_BWV_855a.ogg

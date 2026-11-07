@@ -1,0 +1,86 @@
+# Central config for the voice agent and all MCP servers.
+# Secrets live in .env (see .env.example), never here.
+
+location:
+  name: "Quezon City"
+  latitude: 14.6549
+  longitude: 121.0645
+  timezone: "Asia/Manila"
+
+paths:
+  data_dir: data            # SQLite DBs, logs
+  music_dir: music          # local audio files for PLAY_MUSIC
+  workspaces_dir: workspaces  # per-task dirs for delegated harness jobs
+
+# Web UI (open http://<pi-ip>:8080 from the laptop) and where the bot's voice plays.
+ui:
+  host: 0.0.0.0             # reachable from the LAN
+  port: 8080
+  token: ""                 # set to require http://<pi-ip>:8080/?token=...
+  mute_while_speaking: false  # start with the echo fallback on/off (toggle in the UI)
+audio_out: browser          # browser (laptop speakers) | local (Pi headset)
+
+vad:
+  min_volume: 0.6           # raise (e.g. 0.75) if the laptop speakers leak into the mic
+
+# Turn taking. End of turn = VAD silence (vad_stop_secs) + user_speech_timeout.
+# Longer = fewer replies during mid-sentence pauses, but slower answers (benchmark trade-off).
+turn:
+  vad_stop_secs: 0.2
+  user_speech_timeout: 0.4
+  steer_after_s: 0.8                # LOUD speech over the bot this long = real interruption ("mhm", "totally" are shorter)
+  faint_below_dbfs: null            # quieter speech = TV / across the room: tagged "faint" for the LLM, and never interrupts
+                                    # the bot. Depends on mic gain (check "Level" in the log); fdbench uses -31
+  addressed_check: true             # stay silent for TV / side talk / background speech
+  reset_context_after_idle_s: null  # forget the conversation after N s of quiet (fdbench uses 3)
+
+mcp_servers:                # all run on the Pi, streamable HTTP on localhost
+  home:     {host: 127.0.0.1, port: 8101}
+  memory:   {host: 127.0.0.1, port: 8102}
+  asr:      {host: 127.0.0.1, port: 8103}
+  tts:      {host: 127.0.0.1, port: 8104}
+  delegate: {host: 127.0.0.1, port: 8105}
+
+llm:
+  # Front (voice) agent: fast + cheap. Any OpenRouter model id with tool calling.
+  model: "qwen/qwen3-30b-a3b-instruct-2507"   # $0.10/$0.30 per M tokens, non-reasoning
+  temperature: 0.4
+  max_tokens: 150           # cap on one LLM reply (tool calls fit easily)
+  max_spoken_words: 25      # stop speaking after the sentence that reaches ~25 words (~8 s); lists ramble
+  provider_sort: latency    # OpenRouter provider routing: latency | throughput | price
+
+asr:
+  backend: deepgram         # deepgram | groq_whisper
+  deepgram_model: nova-3
+  groq_model: whisper-large-v3-turbo
+  hedge_after_s: 2.0        # no transcript after 2 s -> send a second request, take the first answer (0 = off)
+  language: en
+
+tts:
+  backend: edge_tts         # deepgram_aura | cartesia | edge_tts  (edge: ~0.5 s vs Aura ~1.3-2.9 s from PH, probe 2026-11-05)
+  sample_rate: 24000
+  deepgram_voice: aura-2-thalia-en
+  cartesia_voice: ""        # Cartesia voice id
+  edge_voice: en-US-AriaNeural
+  split_long_sentences: true   # speak long sentences in two pieces (split at a comma): first word ~0.2-0.4 s sooner
+
+search:                     # web_search tool (home-mcp): OpenRouter web plugin, same API key
+  enabled: true
+  model: "qwen/qwen3-30b-a3b-instruct-2507"
+  engine: exa               # ~$0.007 per search (3 results) + a few tokens
+  max_results: 3
+  timeout_s: 20
+
+delegate:
+  default_harness: opencode # opencode | hermes
+  harness_model: "deepseek/deepseek-v4-flash"  # harness_bench 2026-11-06: website 40 s / $0.001 / judge pass (v3.2: 247 s / $0.014 / judge fail)
+  task_timeout_s: 600       # cap runaway harness tasks (and their API spend) at 10 min
+  # Command templates per harness. {goal} {model} {workdir} are filled in.
+  # Each harness runs one-shot/non-interactive with cwd = workdir.
+  harnesses:
+    opencode:
+      # opencode 1.x CLI (opencode.ai/docs/cli): --auto approves tool permissions (unattended)
+      argv: ["opencode", "run", "--auto", "-m", "openrouter/{model}", "--dir", "{workdir}", "{goal}"]
+    hermes:
+      # hermes-agent CLI reference: --oneshot answers and exits, --yolo skips approval prompts
+      argv: ["hermes", "chat", "--oneshot", "--yolo", "--provider", "openrouter", "--model", "{model}", "-q", "{goal}"]

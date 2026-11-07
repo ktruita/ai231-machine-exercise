@@ -1,0 +1,27 @@
+ME3 voice agent - Raspberry Pi 5 quick install
+==============================================
+
+Needs: Raspberry Pi OS 64-bit, internet, USB headset plugged into the Pi,
+an OpenRouter API key (+ Deepgram key, or switch to free backends in config.yaml).
+
+1. Copy and unpack (from your laptop):
+     scp me3_demo_pi.tar.gz pi@<pi-ip>:~
+     ssh pi@<pi-ip>
+     tar xzf me3_demo_pi.tar.gz && cd me3
+
+2. Install (5-15 min, needs sudo):
+     bash scripts/setup_pi.sh
+   Note the headset's device index it prints at the end.
+
+3. Keys and headset:
+     nano .env        # OPENROUTER_API_KEY, DEEPGRAM_API_KEY, ME3_INPUT_DEVICE=<index>
+   No Deepgram? In config.yaml set  asr.backend: groq_whisper (free Groq key)
+   and  tts.backend: edge_tts  (no key).
+
+4. Run the demo:
+     scripts/start_demo.sh
+   Open the printed address (http://<pi-ip>:8080) on your laptop, click "Start audio",
+   and talk into the headset. Ctrl+C stops everything.
+
+Keep it running after SSH closes:  tmux new -s agent  ->  scripts/start_demo.sh  ->  Ctrl+B D
+Full guide, benchmark and troubleshooting: README.md

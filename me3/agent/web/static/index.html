@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ME3 Voice Agent</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e8ee; --muted: #8b93a7;
+    --user: #2b5cff; --bot: #232937; --ok: #2fbf71; --warn: #f2a33a; --bad: #e5484d; --accent: #8b7bff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .pill { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--line); color: var(--muted); }
+  .pill.listening { background: #1d2a22; color: var(--ok); }
+  .pill.user_speaking { background: #1b2550; color: #8fa8ff; }
+  .pill.thinking { background: #2e2716; color: var(--warn); }
+  .pill.speaking { background: #251f4d; color: var(--accent); }
+  .pill.offline { background: #351b1d; color: var(--bad); }
+  .spacer { flex: 1; }
+  .mic { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .mic .bar { display: inline-block; width: 140px; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; }
+  .mic .fill { display: block; height: 100%; width: 0%; background: #5b6377; border-radius: 999px; transition: width 80ms linear, background 150ms; }
+  .mic.speaking .fill { background: var(--ok); }
+  .mic.speaking .label { color: var(--ok); font-weight: 600; }
+  .mic.stale .label { color: var(--bad); }
+  button { background: var(--line); color: var(--text); border: 1px solid #343a48; border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  button:hover { background: #2e3442; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  label.toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  main { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; padding: 14px 18px; height: calc(100vh - 58px); }
+  .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  /* right column: panels keep their full height and the column scrolls (no squished panels) */
+  .col.side { overflow-y: auto; padding-right: 6px; scrollbar-color: #343a48 transparent; scrollbar-width: thin; }
+  :root { color-scheme: dark; }  /* dark native scrollbars and form controls */
+  .col.side > section { flex: none; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-height: 0; }
+  section h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  #chat { flex: 1; display: flex; flex-direction: column; }
+  #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+  .msg { max-width: 82%; padding: 7px 11px; border-radius: 12px; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--user); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--bot); border-bottom-left-radius: 4px; }
+  .msg.bot.instant { background: transparent; border: 1px dashed #3b4252; color: var(--muted); font-style: italic; }
+  .msg.bot.cut::after { content: " — interrupted"; color: var(--bad); font-size: 12px; font-style: italic; }
+  .meta { align-self: center; font-size: 12px; color: var(--muted); }
+  .meta.tool { color: var(--warn); }
+  .meta.bc { color: #6c7489; text-decoration: line-through; }
+  form { display: flex; gap: 8px; margin-top: 10px; }
+  input[type=text] { flex: 1; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px 10px; font: inherit; }
+  #tasks { max-height: 32vh; overflow-y: auto; }
+  .task { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+  .task .top { display: flex; gap: 8px; align-items: center; }
+  .task .goal { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--line); }
+  .badge.running { color: var(--warn); } .badge.done { color: var(--ok); }
+  .badge.failed, .badge.cancelled { color: var(--bad); }
+  .task .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .task .result { margin-top: 6px; font-size: 13px; }
+  .task a { color: #9db1ff; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tile { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .tile .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .tile .v { font-size: 16px; font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+  .clock { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text); padding: 4px 10px;
+           border: 1px solid var(--line); border-radius: 999px; }
+  .clock small { color: var(--muted); margin-left: 6px; }
+  .w.alert { border-color: var(--bad); animation: pulse 1s ease-in-out infinite; }
+  .w.live { border-color: var(--ok); }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #e5484d00; } 50% { box-shadow: 0 0 0 4px #e5484d55; } }
+  .w button { margin-top: 8px; padding: 4px 10px; font-size: 12px; }
+  .w button.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .widgets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .w { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; min-width: 0; }
+  .w.wide { grid-column: span 2; }
+  .w .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .w .row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+  .w .big { font-size: 22px; font-weight: 700; line-height: 1.1; }
+  .w .small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .w .meter { height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+  .w .meter > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s; }
+  .w .icon { width: 42px; height: 42px; flex: none; display: grid; place-items: center; font-size: 28px; }
+  .bulb { transition: fill .3s, opacity .3s, filter .3s; }
+  .eq { display: flex; align-items: flex-end; gap: 3px; height: 28px; width: 34px; flex: none; }
+  .eq span { width: 6px; background: var(--accent); border-radius: 2px; height: 6px; }
+  .eq.on span { animation: eq 0.9s ease-in-out infinite; }
+  .eq.on span:nth-child(2) { animation-delay: .2s } .eq.on span:nth-child(3) { animation-delay: .4s } .eq.on span:nth-child(4) { animation-delay: .1s }
+  @keyframes eq { 0%, 100% { height: 6px } 50% { height: 26px } }
+  .sched { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-top: 5px; }
+  .sched b { font-variant-numeric: tabular-nums; }
+  .check { font-size: 13px; margin-top: 4px; }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid #0006; }
+  ul.plain { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; }
+  .empty { color: var(--muted); font-size: 13px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } #log { max-height: 50vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>ME3 Voice Agent</h1>
+  <span id="status" class="pill offline">offline</span>
+  <span id="mic" class="mic stale" title="Pi headset mic level. Green = the agent detects your speech.">
+    🎙 <span class="bar"><span id="micFill" class="fill"></span></span> <span id="micLabel" class="label">no mic</span>
+  </span>
+  <span id="clock" class="clock" title="Time on the Raspberry Pi">--:--</span>
+  <span class="spacer"></span>
+  <label class="toggle" title="Use if the laptop speakers leak into the headset mic and the agent interrupts itself">
+    <input type="checkbox" id="mute"> Mute mic while agent speaks
+  </label>
+  <button id="audioBtn" class="primary">▶ Start audio</button>
+</header>
+
+<main>
+  <div class="col">
+    <section id="chat">
+      <h2>Conversation</h2>
+      <div id="log"></div>
+      <form id="sayForm">
+        <input id="sayText" type="text" placeholder="Type instead of speaking…" autocomplete="off">
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="col side">
+    <section>
+      <h2>Background tasks</h2>
+      <div id="tasks"><div class="empty">No tasks yet. Ask for something big, like "make me a website about my dog".</div></div>
+    </section>
+    <section>
+      <h2>Home</h2>
+      <div class="widgets" id="home"><div class="empty">Waiting for the home server…</div></div>
+    </section>
+    <section>
+      <h2>Latency (ms) — last turns</h2>
+      <table>
+        <thead><tr><th>Said</th><th>ASR</th><th>Turn end</th><th>LLM</th><th>TTS</th><th>Voice→voice</th></tr></thead>
+        <tbody id="lat"></tbody>
+      </table>
+      <div class="sub" id="latSummary" style="margin-top:6px; color: var(--muted); font-size: 12px"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get("token");
+const q = token ? `?token=${encodeURIComponent(token)}` : "";
+let ws, audioCtx = null, sampleRate = 24000, nextTime = 0, sources = [], pendingBurst = null;
+let currentBot = null, lastTranscript = "";
+const latRows = [], bargeIns = [], playback = [];
+
+// ---------- websocket ----------
+function connect() {
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${q}`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => setStatus("listening");
+  ws.onclose = () => { setStatus("offline"); setTimeout(connect, 1500); };
+  ws.onmessage = (e) => {
+    if (typeof e.data !== "string") return playChunk(e.data);
+    const m = JSON.parse(e.data);
+    (handlers[m.type] || (() => {}))(m);
+  };
+}
+const send = (obj) => ws && ws.readyState === 1 && ws.send(JSON.stringify(obj));
+setInterval(() => send({ type: "ping", t: performance.now() }), 2000);
+
+const handlers = {
+  hello: (m) => { sampleRate = m.sample_rate; $("mute").checked = !!m.mute_while_speaking; },
+  pong: (m) => send({ type: "rtt", ms: performance.now() - m.t }),
+  status: (m) => setStatus(m.state),
+  user_text: (m) => { endBot(); addMsg("user", m.text); lastTranscript = m.text; },
+  bot_text: (m) => addBot(m.text, m.instant),
+  interrupted: () => { if (currentBot) currentBot.classList.add("cut"); endBot(); },
+  tool: (m) => addMeta(`⚙ ${m.name}(${fmtArgs(m.args)})`, "tool"),
+  decision: (m) => m.kind === "backchannel"
+      ? addMeta(`“${m.text}” — backchannel, kept talking`, "bc")
+      : m.kind === "faint_ignored"
+      ? addMeta(`“${m.text}” — faint / not for me, kept talking`, "bc")
+      : addMeta(`barge-in: ${m.kind.replace("_", " ")}${m.text ? ` “${m.text}”` : ""}`),
+  notice: (m) => addMeta(m.text),
+  mute_while_speaking: (m) => { $("mute").checked = m.on; },
+  tasks: (m) => renderTasks(m.tasks),
+  devices: (m) => { const d = m.devices || {}; syncClock(d); syncSounds(d); syncMusic(d); renderHome(m.devices); },
+  latency: (m) => onLatency(m.record),
+  audio_start: (m) => { pendingBurst = m.burst; },
+  mic: (m) => onMic(m),
+  clear_audio: () => stopAudio(),
+};
+
+// ---------- mic meter ----------
+let micSeen = 0;
+function onMic(m) {
+  micSeen = Date.now();
+  const pct = Math.max(0, Math.min(100, (m.db + 60) / 50 * 100));  // -60 dBFS = empty, -10 = full
+  $("micFill").style.width = pct + "%";
+  const el = $("mic");
+  el.classList.toggle("speaking", m.speaking);
+  el.classList.remove("stale");
+  $("micLabel").textContent = m.speaking ? "hearing you" : (m.db > -45 ? "sound" : "quiet");
+}
+setInterval(() => {  // no readings for 2 s: the mic isn't delivering audio
+  if (Date.now() - micSeen > 2000) {
+    $("mic").className = "mic stale"; $("micFill").style.width = "0%"; $("micLabel").textContent = "no mic";
+  }
+}, 1000);
+
+// ---------- conversation ----------
+function setStatus(s) {
+  const el = $("status");
+  el.className = `pill ${s}`;
+  el.textContent = s.replace("_", " ");
+  ducked = s === "speaking";  // music goes quiet while the agent talks
+  musicVolume();
+}
+
+// ---------- music: plays on THIS laptop; the Pi's home-mcp only keeps the player state ----------
+const music = new Audio();
+music.preload = "auto";
+let musicFile = null, musicVol = 0.6, ducked = false, endedFile = null, musicBlockedShown = false;
+function musicVolume() { music.volume = Math.max(0, Math.min(1, musicVol * (ducked ? 0.2 : 1))); }
+music.addEventListener("ended", () => { endedFile = musicFile; send({ type: "music_ended" }); });
+function syncMusic(d) {
+  if (!d.music_browser || !d.music_file) return;
+  musicVol = (d.volume ?? 60) / 100;
+  musicVolume();
+  if (d.music_file !== musicFile) {
+    musicFile = d.music_file;
+    endedFile = null;
+    music.src = `/music/${d.music_file.split("/").map(encodeURIComponent).join("/")}${q}`;
+  }
+  if (d.music_playing && music.paused && endedFile !== musicFile) {
+    music.play().catch(() => {
+      if (!musicBlockedShown) { musicBlockedShown = true; addMeta("Click ▶ Start audio so the browser may play music"); }
+    });
+  } else if (!d.music_playing && !music.paused) {
+    music.pause();
+  }
+  if (d.music_stopped && !d.music_playing) music.currentTime = 0;
+}
+function scroll() { const l = $("log"); l.scrollTop = l.scrollHeight; }
+function addMsg(who, text, cls = "") {
+  const d = document.createElement("div");
+  d.className = `msg ${who} ${cls}`; d.textContent = text;
+  $("log").appendChild(d); scroll(); return d;
+}
+function addMeta(text, cls = "") {
+  const d = document.createElement("div");
+  d.className = `meta ${cls}`; d.textContent = text;
+  $("log").appendChild(d); scroll();
+}
+function addBot(text, instant) {
+  if (instant) { endBot(); addMsg("bot", text, "instant"); return; }
+  if (!currentBot) currentBot = addMsg("bot", text);
+  else { currentBot.textContent += " " + text; scroll(); }
+}
+function endBot() { currentBot = null; }
+function fmtArgs(a) {
+  try { const o = typeof a === "string" ? JSON.parse(a) : a || {};
+        return Object.entries(o).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", "); }
+  catch { return ""; }
+}
+$("sayForm").onsubmit = (e) => {
+  e.preventDefault();
+  const t = $("sayText").value.trim();
+  if (t) { send({ type: "say", text: t }); $("sayText").value = ""; }
+};
+$("mute").onchange = (e) => send({ type: "mute_while_speaking", on: e.target.checked });
+
+// ---------- audio (bot voice on the laptop speakers) ----------
+$("audioBtn").onclick = async () => {
+  if (!audioCtx) {
+    audioCtx = new AudioContext({ sampleRate });
+    $("audioBtn").textContent = "🔊 Audio on";
+    $("audioBtn").classList.remove("primary");
+  } else if (audioCtx.state === "running") {
+    await audioCtx.suspend(); $("audioBtn").textContent = "🔇 Audio off";
+  } else {
+    await audioCtx.resume(); $("audioBtn").textContent = "🔊 Audio on";
+  }
+};
+function playChunk(buf) {
+  if (!audioCtx || audioCtx.state !== "running") return;
+  const i16 = new Int16Array(buf);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  const ab = audioCtx.createBuffer(1, f32.length, sampleRate);
+  ab.copyToChannel(f32, 0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = ab; src.connect(audioCtx.destination);
+  const JITTER = 0.06;  // small buffer against network jitter
+  const at = Math.max(nextTime, audioCtx.currentTime + (nextTime < audioCtx.currentTime ? JITTER : 0));
+  src.start(at);
+  nextTime = at + ab.duration;
+  sources.push(src);
+  src.onended = () => { sources = sources.filter((s) => s !== src); };
+  if (pendingBurst !== null) {  // report when the first chunk of this utterance really plays
+    const burst = pendingBurst; pendingBurst = null;
+    setTimeout(() => send({ type: "playback_started", burst }), Math.max(0, (at - audioCtx.currentTime) * 1000));
+  }
+}
+function stopAudio() {
+  sources.forEach((s) => { try { s.stop(); } catch {} });
+  sources = []; nextTime = 0; pendingBurst = null;
+}
+
+// ---------- tasks ----------
+function renderTasks(tasks) {
+  const el = $("tasks");
+  if (!tasks || !tasks.length) return;
+  el.innerHTML = "";
+  for (const t of tasks) {
+    const dir = t.workdir ? t.workdir.split("/").pop() : null;
+    const d = document.createElement("div");
+    d.className = "task";
+    d.innerHTML = `
+      <div class="top"><span class="goal"></span><span class="badge ${t.status}">${t.status}</span></div>
+      <div class="sub">${t.harness} · ${fmtSecs(t.elapsed_s)} · ${t.task_id}
+        ${dir ? ` · <a href="/files/${encodeURIComponent(dir)}${q}" target="_blank">view files</a>` : ""}
+        ${t.status === "running" ? ` · <a href="#" data-cancel="${t.task_id}">cancel</a>` : ""}</div>
+      ${t.status === "running" && (t.last_step || (t.files_so_far || []).length) ? `<div class="sub progress"></div>` : ""}
+      ${t.result ? `<div class="result"></div>` : ""}`;
+    d.querySelector(".goal").textContent = (t.parent ? "↳ " : "") + t.goal;
+    const prog = d.querySelector(".progress");
+    if (prog) prog.textContent = [
+      (t.files_so_far || []).length ? `files: ${t.files_so_far.slice(0, 4).join(", ")}` : "",
+      t.last_step ? `now: ${t.last_step}` : ""].filter(Boolean).join(" · ");
+    d.querySelector(".goal").title = t.goal;
+    if (t.result) d.querySelector(".result").textContent = t.result;
+    el.appendChild(d);
+  }
+  el.querySelectorAll("[data-cancel]").forEach((a) => a.onclick = (e) => {
+    e.preventDefault(); send({ type: "cancel_task", id: a.dataset.cancel });
+  });
+}
+function fmtSecs(s) { s = Math.round(s); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; }
+
+// ---------- home ----------
+const COLORS = { red: "#e5484d", blue: "#2b5cff", green: "#2fbf71", white: "#f5f5f5", yellow: "#f5d90a",
+                 purple: "#8b5cf6", orange: "#f97316", pink: "#ec4899" };
+const WEATHER_ICON = (code) => code === 0 ? "☀️" : code <= 2 ? "⛅" : code === 3 ? "☁️" : code <= 48 ? "🌫️"
+  : code <= 67 ? "🌧️" : code <= 77 ? "❄️" : code <= 82 ? "🌦️" : "⛈️";
+const ago = (t) => { const s = Math.max(0, Date.now() / 1000 - t);
+  return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
+const clock = (secs) => { secs = Math.max(0, Math.round(secs)); const m = Math.floor(secs / 60), x = secs % 60;
+  return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}:${String(x).padStart(2, "0")}`; };
+function renderHome(d) {
+  if (!d || !Object.keys(d).length) return;
+  const color = COLORS[d.color] || d.color || "#f5f5f5";
+  const on = !!d.lights_on, bright = d.brightness ?? 100;
+  const bulb = `<svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
+      <path class="bulb" d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"
+        fill="${on ? color : "#3a4150"}" style="opacity:${on ? 0.35 + 0.65 * bright / 100 : 1};filter:${on ? `drop-shadow(0 0 ${4 + bright / 10}px ${color})` : "none"}"/>
+      <rect x="9" y="19" width="6" height="3" rx="1" fill="#8b93a7"/></svg>`;
+  const t = d.temperature ?? 24, frac = Math.max(0, Math.min(1, (t - 16) / 14));
+  const dial = `<svg viewBox="0 0 44 44" width="42" height="42" aria-hidden="true">
+      <circle cx="22" cy="22" r="18" fill="none" stroke="var(--line)" stroke-width="5"/>
+      <circle cx="22" cy="22" r="18" fill="none" stroke="${t >= 26 ? "var(--warn)" : "var(--user)"}" stroke-width="5"
+        stroke-linecap="round" stroke-dasharray="${(frac * 113).toFixed(1)} 113" transform="rotate(-90 22 22)"/></svg>`;
+  const w = d.weather;
+  const now = d.now || Date.now() / 1000;
+  const ringing = d.ringing || [], call = d.in_call;
+  const sched = (d.schedules || []).map((x) => `<div class="sched"><span>${x.kind === "alarm" ? "⏰" : "⏱️"} ${escapeHtml(x.label)}</span>
+      <b>${x.kind === "alarm" ? new Date(x.due * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : clock(x.due - now)}</b></div>`).join("");
+  const rem = (d.reminders || []).map((r) => `<div class="check">☐ ${escapeHtml(r)}</div>`).join("");
+  const comms = [d.last_call && `📞 Called <b>${escapeHtml(d.last_call.contact)}</b>${d.last_call.duration ? ` (${clock(d.last_call.duration)})` : ""} · ${ago(d.last_call.at)}`,
+    d.last_message && `💬 To <b>${escapeHtml(d.last_message.contact)}</b>: “${escapeHtml(d.last_message.text || "")}” · ${ago(d.last_message.at)}`]
+    .filter(Boolean).map((x) => `<div class="small" style="white-space:normal;margin-top:4px">${x}</div>`).join("");
+  $("home").innerHTML = `
+    <div class="w"><div class="k">Lights</div><div class="row"><div class="icon">${bulb}</div>
+      <div style="min-width:0;flex:1"><div class="big">${on ? "On" : "Off"}</div>
+      <div class="small">${on ? `${bright}% · ${escapeHtml(d.color || "white")}` : "say “turn on the lights”"}</div>
+      <div class="meter"><div style="width:${on ? bright : 0}%;background:${color}"></div></div></div></div></div>
+    <div class="w"><div class="k">Climate</div><div class="row"><div class="icon">${dial}</div>
+      <div><div class="big">${t}°C</div><div class="small">thermostat set point</div></div></div></div>
+    <div class="w wide"><div class="k">Music</div><div class="row">
+      <div class="eq ${d.music_playing ? "on" : ""}"><span></span><span></span><span></span><span></span></div>
+      <div style="min-width:0;flex:1"><div class="big" style="font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${escapeHtml(d.music_title || "No music")}</div>
+      <div class="small">${d.music_playing ? "▶ Playing on this laptop" : d.music_stopped ? "■ Stopped" : "❚❚ Paused"} · volume ${d.volume ?? 60}%</div>
+      <div class="meter"><div style="width:${d.volume ?? 60}%"></div></div></div></div></div>
+    <div class="w"><div class="k">Weather</div>${w ? `<div class="row"><div class="icon">${WEATHER_ICON(w.code)}</div>
+      <div style="min-width:0"><div class="big">${w.temp}°C</div><div class="small">${escapeHtml(w.desc)} · feels ${w.feels}°</div>
+      <div class="small">${escapeHtml(w.place)} · ${ago(w.at)}</div></div></div>`
+      : `<div class="small" style="margin-top:8px">Ask “what's the weather?”</div>`}</div>
+    <div class="w ${ringing.length ? "alert" : ""}"><div class="k">Timers & alarms</div>
+      ${ringing.map((r) => `<div class="sched"><span>🔔 <b>${escapeHtml(r.label)}</b></span><b style="color:var(--bad)">RINGING</b></div>`).join("")}
+      ${ringing.length ? `<button class="danger" data-act="dismiss_alarm">Dismiss</button><div class="small">or say “stop”</div>` : ""}
+      ${sched || (ringing.length ? "" : `<div class="small" style="margin-top:8px">None set</div>`)}</div>
+    <div class="w ${call ? "live" : ""}"><div class="k">Calls & messages</div>
+      ${call ? `<div class="row"><div class="icon" style="font-size:24px">📞</div><div style="min-width:0">
+        <div class="big" style="font-size:16px">${escapeHtml(call.contact)}</div>
+        <div class="small">${call.status === "ringing" ? "Ringing…" : `On call · ${clock(now - call.since - 6)}`}</div></div></div>
+        <button class="danger" data-act="end_call">Hang up</button>` : ""}
+      ${comms || (call ? "" : `<div class="small" style="margin-top:8px">No calls or messages yet</div>`)}</div>
+    <div class="w"><div class="k">Reminders</div>${rem || `<div class="small" style="margin-top:8px">No reminders</div>`}</div>
+    ${d.last_search ? `<div class="w wide"><div class="k">🔎 Web search · ${ago(d.last_search.at)}</div>
+      <div style="margin-top:6px;font-weight:600">“${escapeHtml(d.last_search.query)}”</div>
+      <div style="margin-top:4px;font-size:13px">${escapeHtml(d.last_search.answer || "")}</div>
+      ${(d.last_search.sources || []).length ? `<div class="small" style="margin-top:4px">sources: ${d.last_search.sources.map(escapeHtml).join(" · ")}</div>` : ""}</div>` : ""}`;
+}
+// buttons on the widgets (event delegation: the panel is re-rendered every second)
+$("home").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (b) send({ type: b.dataset.act });
+});
+
+// ---------- sounds: alarm beeps + phone ringback, generated here (no audio files) ----------
+let ringingNow = false, callRingingNow = false;
+function tone(freqs, start, dur, gain) {
+  if (!audioCtx || audioCtx.state !== "running") return;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0, start);
+  g.gain.linearRampToValueAtTime(gain * (ducked ? 0.3 : 1), start + 0.02);
+  g.gain.setValueAtTime(gain * (ducked ? 0.3 : 1), start + dur - 0.03);
+  g.gain.linearRampToValueAtTime(0, start + dur);
+  g.connect(audioCtx.destination);
+  for (const f of freqs) {
+    const o = audioCtx.createOscillator();
+    o.type = "sine"; o.frequency.value = f; o.connect(g); o.start(start); o.stop(start + dur);
+  }
+}
+setInterval(() => {  // alarm: four quick beeps every 1.2 s
+  if (!ringingNow || !audioCtx) return;
+  const t = audioCtx.currentTime + 0.02;
+  for (let i = 0; i < 4; i++) tone([880], t + i * 0.18, 0.12, 0.25);
+}, 1200);
+setInterval(() => {  // phone ringback: 2 s tone, 2 s silence
+  if (!callRingingNow || !audioCtx) return;
+  tone([440, 480], audioCtx.currentTime + 0.02, 2.0, 0.12);
+}, 4000);
+function syncSounds(d) {
+  const wasCall = callRingingNow;
+  ringingNow = (d.ringing || []).length > 0;
+  callRingingNow = !!(d.in_call && d.in_call.status === "ringing");
+  if (callRingingNow && !wasCall && audioCtx) tone([440, 480], audioCtx.currentTime + 0.02, 2.0, 0.12);  // start right away
+}
+
+// ---------- clock: the Pi's time, in the home's time zone ----------
+let piOffsetMs = 0, piTz;
+function syncClock(d) { if (d.now) { piOffsetMs = d.now * 1000 - Date.now(); piTz = d.tz; } }
+setInterval(() => {
+  const t = new Date(Date.now() + piOffsetMs);
+  try {
+    const time = t.toLocaleTimeString([], { timeZone: piTz, hour: "numeric", minute: "2-digit", second: "2-digit" });
+    const day = t.toLocaleDateString([], { timeZone: piTz, weekday: "short", month: "short", day: "numeric" });
+    $("clock").innerHTML = `🕒 ${time}<small>${day}</small>`;
+  } catch (e) { $("clock").textContent = t.toLocaleTimeString(); }
+}, 1000);
+
+function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+// ---------- latency ----------
+function onLatency(r) {
+  if (r.type === "barge_in") bargeIns.push(r.barge_in_ms);
+  else if (r.type === "browser_playback") playback.push(r.browser_playback_ms);
+  else if (r.type === "turn") {
+    latRows.unshift(r);
+    latRows.length = Math.min(latRows.length, 12);
+    const n = (x) => (x == null ? "–" : Math.round(x));
+    const delta = (t, a, b) => (t[a] != null && t[b] != null ? t[a] - t[b] : null);
+    $("lat").innerHTML = latRows.map((t) => {
+      const v2v = t.voice_to_voice_ms != null ? t.voice_to_voice_ms + 1000 * (t.vad_stop_secs || 0) : null;
+      return `<tr><td>${escapeHtml((t.first_speech ? `[${t.first_speech}] ` : "") + (t.transcript || "").slice(0, 28))}</td>
+        <td>${n(t.asr_ms)}</td><td>${n(t.endpoint_ms)}</td><td>${n(delta(t, "llm_ttft_ms", "endpoint_ms"))}</td>
+        <td>${n(delta(t, "tts_first_ms", "llm_ttft_ms"))}</td><td><b>${n(v2v)}</b></td></tr>`;
+    }).join("");
+  }
+  const med = (a) => { if (!a.length) return "–"; const s = [...a].sort((x, y) => x - y); return Math.round(s[Math.floor(s.length / 2)]); };
+  $("latSummary").textContent =
+    `Barge-in median: ${med(bargeIns)} ms (${bargeIns.length}) · Pi→laptop playback median: ${med(playback)} ms (${playback.length})`;
+}
+
+connect();
+</script>
+</body>
+</html>
